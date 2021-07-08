@@ -67,14 +67,6 @@ import random
 # valX = (valX*dmd_block_w).astype(int)/dmd_block_w
 # testX = (testX*dmd_block_w).astype(int)/dmd_block_w
 
-m_act = 24
-
-actual_uppers_arr_1024 = np.load("./tools/actual_uppers_arr_1024.npy")
-
-uppers1_nm = actual_uppers_arr_1024[-1, ...].copy()
-uppers1_nm = np.delete(uppers1_nm, [m_act//2], 1)
-
-
 def relu(x):
     return np.maximum(0, x)
 
@@ -197,3 +189,61 @@ class DNN:
         self.feedforward(z)
         return self.a2.argmax(axis=1)
 
+
+class DNN_1d:
+    def __init__(self, *adam_args, x, y, w1_0, batch_size, num_batches, lr=0.001):
+        self.x = x
+        self.y = y
+        self.num_batches = num_batches
+        self.batch_size = batch_size
+        self.lr = lr
+        self.loss = []
+        ip_dim = self.x.shape[1]
+        op_dim = self.y.shape[1]
+
+        assert w1_0.shape == (ip_dim, op_dim)
+        self.w1 = w1_0
+
+        # parameters for ADAM
+        self.m_dw1, self.v_dw1, self.beta1, self.beta2 = adam_args
+        self.epsilon = 1e-8
+        self.t = 1
+
+    def feedforward(self, z1):
+
+        self.z1 = z1
+        self.a1 = softmax(self.z1 * 2.)
+
+
+    def adam_update(self, dw, m_dw, v_dw):
+
+        t = self.t
+
+        m_dw = self.beta1 * m_dw + (1 - self.beta1) * dw
+        v_dw = self.beta2 * v_dw + (1 - self.beta2) * (dw ** 2)
+
+        m_dw_corr = m_dw / (1 - self.beta1 ** t)
+        v_dw_corr = v_dw / (1 - self.beta2 ** t)
+
+        adam_dw = self.lr * (m_dw_corr / (np.sqrt(v_dw_corr) + self.epsilon))
+
+        return adam_dw, m_dw, v_dw
+
+    def backprop(self, xs, ys):
+
+        self.loss = error(self.a1, ys)
+
+        a1_delta = (self.a1 - ys) / self.batch_size
+
+        dw1 = np.dot(xs.T, a1_delta)
+
+        adam_dw1, self.m_dw1, self.v_dw1 = self.adam_update(dw1, self.m_dw1, self.v_dw1)
+
+        self.w1 -= adam_dw1
+
+        self.t += 1
+
+    # def predict(self, x):
+    #     z = np.dot(x, self.w1)
+    #     self.feedforward(z)
+    #     return self.a1.argmax(axis=1)

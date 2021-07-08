@@ -10,7 +10,7 @@ from glumpy_display import setup, window_on_draw
 from slm_display import SLMdisplay
 from make_slm1_image import make_slm_rgb
 from multiprocessing import Process, Pipe
-from pylon import run_camera, view_camera, Camera, CameraThread
+from pylon import run_camera, view_camera #, Camera, CameraThread
 import threading
 from scipy.interpolate import interp1d
 from scipy.signal import find_peaks

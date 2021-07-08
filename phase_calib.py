@@ -4,11 +4,11 @@ import signal
 import numpy as np
 import cupy as cp
 from glumpy import app
-from make_dmd_image import make_dmd_rgb, make_dmd_image, make_dmd_rgb_multi
+# from make_dmd_image import make_dmd_rgb, make_dmd_image, make_dmd_rgb_multi
 from MNIST import make_dmd_rgb as make_dmd_rgb_new
 from glumpy_display import setup, window_on_draw
 from slm_display import SLMdisplay
-from make_slm1_image import make_slm_rgb
+from make_slm1_image import make_slm_rgb, make_dmd_image, update_params, make_dmd_batch
 from multiprocessing import Process, Pipe
 from pylon import run_camera, view_camera, Camera, CameraThread
 import threading
@@ -16,10 +16,6 @@ from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-
-dims = sys.argv[1:4]
-n = int(dims[0])
-m = int(dims[1])
 
 
 def keyboardinterrupthandler(signal, frame):
@@ -37,13 +33,10 @@ def pad_frames(frs, lead=3, trail=2):
     frs.extend([null_frame for _ in range(trail)])
     return frs
 
-def run_frames(frames, fr=0, fc=None, pad=True):
+def run_frames(frames, fr=0, fc=None):
     global cp_arr, target_frames, frame_count, batch_num
 
-    if pad:
-        target_frames = pad_frames(frames, 3, 2)
-    else:
-        target_frames = frames
+    target_frames = frames
 
     if fc is None:
         fc = len(frames) - 2
@@ -56,11 +49,11 @@ def run_frames(frames, fr=0, fc=None, pad=True):
     print('dmd finished batch {}'.format(batch_num))
 
 
-def update_slm(arrA, arrP):
-
-    gpu_arrA = cp.asarray(arrA)
-    gpu_arrP = cp.asarray(arrP)
-    img = make_slm_rgb(gpu_arrA, gpu_arrP) #.get()
+def update_slm(arrA, ref=1, ref_val=0.2):
+    global ref_block_val, ref_block_phase
+    if ref:
+        arrA[:, m//2] = ref_val
+    img = make_slm_rgb(arrA, ref_block_val, ref_block_phase)
     slm.updateArray(img)
     time.sleep(0.7)
 
@@ -71,10 +64,10 @@ def wait_for_sig(conn):
     conn.recv()
 
 
-def dmd_one_frame(arr):
-    img = make_dmd_image(arr)
-    frame = make_dmd_rgb([img for _ in range(24)])
-    return [frame]
+def dmd_one_frame(arr, ref):
+    global ref_block_val
+    img = make_dmd_image(arr, ref=ref, ref_block_val=ref_block_val)
+    return [img]
 
 
 def init_cam_dmd_scan():
@@ -87,7 +80,7 @@ def init_cam_dmd_scan():
     time.sleep(5)
 
     batch_num = 0
-    null_frame = dmd_one_frame(np.zeros((n, m)))[0]
+    null_frame = dmd_one_frame(np.zeros((n, m)), ref=0)[0]
     null_frames = [null_frame for _ in range(10)]
 
     conn1.send((0, 100))
@@ -128,21 +121,23 @@ if __name__ == '__main__':
     # ####################
     # # PHASE CALIB #
     # ####################
-    #
-    #
-    ref_col = 62
+
+    n = 96
+    m = 25
+    batch_size = 96
+    num_frames = 4
+    ref_block_val = 0.2
+    ref_block_phase = 0.
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
 
     ones = np.full((n, m), 1.)
-    arr = np.full((n, m), 0.)
-
-    update_slm(ones, arr)
+    update_slm(ones, ref=1, ref_val=0.)
 
     dmd_col = np.zeros((n, m))
-    dmd_col[ref_col, :] = 1.
     dmd_col[55, :] = 1.
 
-    dmd_frame = dmd_one_frame(dmd_col)
-    run_frames(frames=dmd_frame, pad=False)
+    dmd_frame = dmd_one_frame(dmd_col, ref=0)
+    run_frames(frames=dmd_frame)
 
     time.sleep(1)
 
@@ -150,8 +145,13 @@ if __name__ == '__main__':
 
     init_cam_dmd_scan()
 
-    dmd_cols = [cp.load('./tools/dmd_imgs/two_cols/col_array_{}.npy'.format(i)) for i in range(5)]
-    dmd_cols = pad_frames(dmd_cols)
+    # dmd_cols = [cp.load('./tools/dmd_imgs/two_cols/col_array_{}.npy'.format(i)) for i in range(5)]
+
+    dmd_cols = cp.eye(n)
+
+    dmd_rgbs = cp.zeros((num_frames+4, 1080, 1920, 4), dtype=cp.uint8)
+    dmd_rgbs[2:-2, :, :, :-1] = make_dmd_batch(dmd_cols, 0, ref_block_val, batch_size, num_frames)
+    dmd_rgbs[..., -1] = 255
 
     phases = np.linspace(0, 2*np.pi, 64)
 
@@ -160,7 +160,7 @@ if __name__ == '__main__':
 
         conn1.send((2, 400))
 
-        run_frames(frames=dmd_cols, pad=False)
+        run_frames(frames=dmd_rgbs)
 
         wait_for_sig(conn1)
 
@@ -168,15 +168,13 @@ if __name__ == '__main__':
 
         print(indx)
 
-        arr = np.full((n, m), 0.)
-        arr[ref_col, :] = p
-        arr[:, m//2] = 0
-
-        update_slm(ones, arr)
+        ref_block_phase = p
+        dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+        update_slm(ones)
 
         conn1.send((2+indx, 400))
 
-        run_frames(frames=dmd_cols, pad=False)
+        run_frames(frames=dmd_rgbs)
 
         wait_for_sig(conn1)
 

@@ -107,8 +107,6 @@ def make_dmd_rgb(samples):
     dmd_24_arr = cp.sum(dmd_24_arr, axis=2)
     dmd_24_arr[..., -1] = 255
 
-
-
     return dmd_24_arr.astype(cp.uint8)
 
 

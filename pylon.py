@@ -211,7 +211,7 @@ class Camera():
         self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
         self.arr = grabResult.Array
-        self.ampls = np.empty(m)
+        # self.ampls = np.empty(m)
 
     def capture(self):
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
