@@ -72,7 +72,7 @@ def relu(x):
 
 
 def relu_d(x):
-    return np.maximum(0, np.sign(x - 10))
+    return np.maximum(0, np.sign(x))
 
 
 def softmax(x):
@@ -113,7 +113,7 @@ class DNN:
         self.loss = []
         ip_dim = self.x.shape[1]
         op_dim = self.y.shape[1]
-        hl_dim = 24
+        hl_dim = 25
 
         self.nonlinear = nonlinear
 
@@ -174,7 +174,7 @@ class DNN:
         adam_dw2, self.m_dw2, self.v_dw2 = self.adam_update(dw2, self.m_dw2, self.v_dw2)
         adam_dw1, self.m_dw1, self.v_dw1 = self.adam_update(dw1, self.m_dw1, self.v_dw1)
 
-        # self.w2 -= adam_dw2
+        self.w2 -= adam_dw2
         self.w1 -= adam_dw1
 
         # self.w1 = np.clip(self.w1, -uppers1_nm, uppers1_nm)

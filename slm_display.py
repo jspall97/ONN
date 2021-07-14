@@ -17,11 +17,9 @@ class ImageEvent(wx.PyCommandEvent):
 class SLMframe(wx.Frame):
     """Frame used to display full screen image."""
 
-    def __init__(self, monitor, isImageLock=True):
+    def __init__(self, isImageLock=True):
         self.isImageLock = isImageLock
         # Create the frame
-        # wx.Frame.__init__(self,None,-1,'SLM window',pos = (self._x0, self._y0), size = (self._resX, self._resY))
-        # self.SetMonitor(monitor)
         self._x0 = 0
         self._y0 = 0
         self._resX = 1920
@@ -54,16 +52,11 @@ class SLMframe(wx.Frame):
             if self.eventLock.locked():
                 self.eventLock.release()
 
-    def SetMonitor(self, monitor):
-        if (monitor < 0 or monitor > wx.Display.GetCount() - 1):
-            raise ValueError('Invalid monitor (monitor %d).' % monitor)
-        self._x0, self._y0, self._resX, self._resY = wx.Display(monitor).GetGeometry()
-
 
 class SLMdisplay:
     """Interface for sending images to the display frame."""
 
-    def __init__(self, monitor=1, isImageLock=False):
+    def __init__(self, monitor=0, isImageLock=False):
         self.isImageLock = isImageLock
         self.monitor = monitor
         # Create the thread in which the window app will run
@@ -123,7 +116,7 @@ class videoThread(threading.Thread):
 
     def run(self):
         app = wx.App()
-        frame = SLMframe(monitor=self.parent.monitor, isImageLock=self.parent.isImageLock)
+        frame = SLMframe(isImageLock=self.parent.isImageLock)
         frame.Show(True)
         self.frame = frame
         self.lock.release()

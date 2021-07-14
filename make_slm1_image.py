@@ -6,6 +6,8 @@ dims = sys.argv[1:4]
 n = int(dims[0])
 m = int(dims[1])
 
+ref_spot = m//2 - 1
+
 ######################################################
 # SLM1 (Santec) #
 ######################################################
@@ -24,7 +26,7 @@ slm_yc = slm_resY_actual//2
 slm_w = 1406
 slm_h = 775
 
-slm_ref_w = 200
+slm_ref_w = 300
 slm_sig_w = slm_w - slm_ref_w
 
 slm_s = np.s_[slm_xc-(slm_w//2):slm_xc+slm_w-(slm_w//2), slm_yc-(slm_h//2):slm_yc+slm_h-(slm_h//2)]
@@ -76,7 +78,7 @@ gpu_inv_sinc_LUT = cp.asarray(inv_sinc_LUT, dtype='float32')
 
 def update_params(ref_block_val, batch_size, num_frames):
 
-    global slm_w, slm_sig_w, slm_ref_w, slm_h
+    global slm_w, slm_sig_w, slm_ref_w, slm_h, ref_spot
     global cols_to_del, rows_to_del, slm_block_w, slm_block_h
     global dmd_block_w, dmd_block_h, slm_centers_x, slm_centers_y, insert_indx, insert_indx_dmd
     global gpu_dmd_centers_x, gpu_dmd_centers_y
@@ -145,8 +147,8 @@ def update_params(ref_block_val, batch_size, num_frames):
     y_blocks_multi = y_blocks[cp.newaxis, :].get().astype(np.bool)
     y_blocks_multi_cp = cp.array(y_blocks_multi)
 
-    ampl_ref_sindx = int(gpu_dmd_centers_y[m // 2, 0] - (dmd_block_h // 2) + 1)
-    ampl_ref_eindx = int(gpu_dmd_centers_y[m // 2, 0] + (dmd_block_h // 2))
+    ampl_ref_sindx = int(gpu_dmd_centers_y[ref_spot, 0] - (dmd_block_h // 2) + 1)
+    ampl_ref_eindx = int(gpu_dmd_centers_y[ref_spot, 0] + (dmd_block_h // 2))
 
     ampl_ref_s = np.s_[:, :, ampl_ref_sindx:ampl_ref_eindx]
 
@@ -273,8 +275,7 @@ def make_dmd_image(arr, ref=1, ref_block_val=1.):
         mapped[ws_local, dmd_yc - j, dmd_xc] = mask
         mapped[ws_local, dmd_yc + j + 1, dmd_xc] = mask
 
-    out = mapped.sum(axis=0)
-    out = cp.flip(out, 1).astype(cp.uint8)
+    out = mapped.sum(axis=0).astype(cp.uint8)
 
     if ref:
         out[ampl_ref_sindx:ampl_ref_eindx, :] = 1
@@ -284,6 +285,8 @@ def make_dmd_image(arr, ref=1, ref_block_val=1.):
             out[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w)] = 1
         else:
             out[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w)] = 0
+
+    out = cp.flip(out, 0)
 
     rgb = out[..., None].repeat(4, axis=2)
     rgb *= 255
@@ -322,8 +325,7 @@ def make_dmd_batch(vecs, ref, ref_block_val, batch_size, num_frames):
     imgs *= bit_values_extended
     imgs = imgs.sum(axis=2)
     imgs = cp.transpose(imgs, (1, 3, 2, 0))
-    # imgs = cp.flip(imgs, axis=0)
-
+    imgs = cp.flip(imgs, axis=1)
     del outxs
 
     return imgs

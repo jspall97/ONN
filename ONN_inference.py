@@ -1,70 +1,110 @@
+from pypylon import pylon
+from pypylon import genicam
+import time
+import sys
+import threading
 import time
 import sys
 import signal
 import numpy as np
+from scipy.optimize import curve_fit
 import cupy as cp
 from glumpy import app
-from make_dmd_image import make_dmd_rgb, make_dmd_image
-from MNIST import map_vec_to_arr
+# from make_dmd_image import make_dmd_rgb, make_dmd_image
+# from MNIST import map_vec_to_arr
 from glumpy_display import setup, window_on_draw
 from slm_display import SLMdisplay
-from make_slm1_image import make_slm_rgb, slm_rm_case_10
+from make_slm1_image import make_slm_rgb, make_dmd_image, make_dmd_batch, update_params
 from multiprocessing import Process, Pipe
-from pylon import run_camera, view_camera
-from ANN import DNN, accuracy, softmax, cross_entropy, error
+from ANN import DNN, DNN_1d, accuracy, softmax, accuracy
 from scipy.io import loadmat
 import matplotlib.pyplot as plt
 import random
 from termcolor import colored
+import queue
+from collections import deque
+import ticking
+from glumpy.app import clock
+from pylon import view_camera
+
+mempool = cp.get_default_memory_pool()
+pinned_mempool = cp.get_default_pinned_memory_pool()
 
 dims = sys.argv[1:4]
 n = int(dims[0])
 m = int(dims[1])
-l = int(dims[2])
-dmd_block_w = 15
 
+ref_spot = m//2 - 1
 
-inputs = loadmat('./tools/MNIST digit - subsampled - 121.mat')
+ref_block_val = 1.
+batch_size = 240
+num_batches = 5
+num_frames = 10
 
-trainX_raw = inputs['trainX']
-trainY_raw = inputs['trainY']
-testX_raw = inputs['testX']
-testY_raw = inputs['testY']
+dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+
+inputs = loadmat('C:/Users/spall/OneDrive - Nexus365/Code/JS/controller/onn_test/MNIST digit - subsampled - 100.mat')
 
 num_train = 60000
 num_test = 10000
 
+trainY_raw = inputs['trainY']
 trainY = np.zeros((num_train, 10))
-testY = np.zeros((num_test, 10))
-
 for i in range(num_train):
     trainY[i, trainY_raw[0, i]] = 1
 
+testY_raw = inputs['testY']
+testY = np.zeros((num_test, 10))
 for i in range(num_test):
     testY[i, testY_raw[0, i]] = 1
 
-trainX = np.empty((num_train, 121))
+trainX_raw = inputs['trainX']
+trainX = np.empty((num_train, 100))
 for i in range(num_train):
     trainX_k = trainX_raw[i, :] - trainX_raw[i, :].min()
     trainX_k = trainX_k / trainX_k.max()
-    trainX[i, :] = 1 - trainX_k
+    trainX[i, :] = trainX_k
 
-testX = np.empty((num_test, 121))
+testX_raw = inputs['testX']
+testX = np.empty((num_test, 100))
 for i in range(num_test):
     testX_k = testX_raw[i, :] - testX_raw[i, :].min()
     testX_k = testX_k / testX_k.max()
-    testX[i, :] = 1 - testX_k
+    testX[i, :] = testX_k
 
-random.Random(0).shuffle(trainX)
-random.Random(0).shuffle(trainY)
-random.Random(0).shuffle(testX)
-random.Random(0).shuffle(testY)
+np.random.seed(0)
+np.random.shuffle(trainX)
+np.random.seed(0)
+np.random.shuffle(trainY)
+np.random.seed(0)
+np.random.shuffle(testX)
+np.random.seed(0)
+np.random.shuffle(testY)
 
 valX = testX[:5000, :].copy()
 testX = testX[5000:, :].copy()
 
 valY = testY[:5000, :].copy()
 testY = testY[5000:, :].copy()
+
+trainX -= 0.1
+trainX = np.clip(trainX, 0, 1)
+trainX /= trainX.max()
+
+valX -= 0.1
+valX = np.clip(valX, 0, 1)
+valX /= valX.max()
+
+testX -= 0.1
+testX = np.clip(testX, 0, 1)
+testX /= testX.max()
+
+trainX = (trainX * dmd_block_w).astype(int) / dmd_block_w
+valX = (valX * dmd_block_w).astype(int) / dmd_block_w
+testX = (testX * dmd_block_w).astype(int) / dmd_block_w
+
+
+testX_cp = cp.array(testX, dtype=cp.float32)
 
 
 def keyboardinterrupthandler(signal, frame):
@@ -76,143 +116,128 @@ def keyboardinterrupthandler(signal, frame):
 signal.signal(signal.SIGINT, keyboardinterrupthandler)
 
 
-def run_frames(frames, fr=0, fc=None, pad=True):
-    global cp_arr, target_frames, frame_count, batch_num
+def update_slm(arr, lut=False, ref=False):
+    global ampl_norm_val
 
-    def pad_frames(frs, lead, trail):
-        global null_frame
-        frs[0:0] = [null_frame for _ in range(lead)]
-        frs.extend([null_frame for _ in range(trail)])
-        return frs
-
-    if pad:
-        target_frames = pad_frames(frames, 3, 2)
-    else:
-        target_frames = frames
-
-    if fc is None:
-        fc = len(frames) - 2
-
-    cp_arr = target_frames[0]
-    frame_count = 0
-
-    app.run(framerate=fr, framecount=fc)
-
-
-actual_uppers_arr_1024 = np.load('./tools/actual_uppers_arr_1024.npy')
-
-uppers1_nm = actual_uppers_arr_1024[..., -1].copy()
-
-actual_uppers_arr_1024_T = np.transpose(actual_uppers_arr_1024, (2, 0, 1))
-gpu_actual_uppers_arr_1024 = cp.asarray(actual_uppers_arr_1024_T)
-
-
-def ampl_lut_nm(arr_in):
-    gpu_arr = cp.asarray(arr_in)
-    map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr_1024 - cp.abs(gpu_arr)), axis=0)
-    arr_out = cp.linspace(0, 1, 1024)[map_indx]
-
-    return arr_out
-
-
-def update_slm(arr, lut=False, stag=True):
+    if arr.shape[1] == m - 1:
+        arr = np.insert(arr, ref_spot, np.zeros(n), 1)
 
     if lut:
-        arr_A = ampl_lut_nm(arr)
-        arr_phi = cp.asarray(np.angle(arr))
-        img = make_slm_rgb(arr_A, arr_phi, stagger=stag).get()
-    else:
-        arr_A = cp.asarray(arr)
-        img = make_slm_rgb(arr_A, stagger=stag).get()
+        gpu_arr = cp.asarray(arr)
+        map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr_256 - gpu_arr), axis=0)
+        arr_A = cp.linspace(-1., 1., 256)[map_indx].get()
 
+    if ref:
+        arr_A[:, ref_spot] = ampl_norm_val
+
+    arr_A = np.flip(arr_A, axis=1)
+    img = make_slm_rgb(arr_A, ref_block_val)
     slm.updateArray(img)
-    time.sleep(0.7)
+    # time.sleep(0.7)
 
 
-def wait_for_sig(conn):
-    while not conn.poll():
-        pass
-    conn.recv()
+def dmd_one_frame(arr, ref):
+    img = make_dmd_image(arr, ref=ref, ref_block_val=ref_block_val)
+    return [img]
 
 
-def dmd_one_frame(arr):
-    img = make_dmd_image(arr)
-    frame = make_dmd_rgb([img for _ in range(24)])
-    return [frame]
+x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
+y_centers = np.load('./tools/y_centers_list.npy')
+recomb_params = (35, 619, 84, np.array([602, 637]), np.array([67, 102]), 70)
+y_center, mid0, mid1, ref_indxs_0, ref_indxs_1, ref_width = recomb_params
 
 
-def init_cam_dmd_scan():
-    global conn1, conn2, batch_num
+def recombine(arr):
+    frame0 = arr[:, :arr.shape[1] // 2].copy()
+    frame1 = arr[:, arr.shape[1] // 2:].copy()
 
-    conn1, conn2 = Pipe()
-    cam_process = Process(target=run_camera, args=[conn2, 'train'])
-    cam_process.daemon = 1
-    cam_process.start()
-    time.sleep(5)
+    frame1 = np.flip(frame1, axis=1)
 
-    batch_num = 0
-    nf = dmd_one_frame(np.ones((n, m)))[0]
-    nfs = [nf for _ in range(200)]
+    cross0 = frame0[mid0 - (ref_width // 5):mid0 + (ref_width // 5), :].mean(axis=0)
+    cross1 = frame1[mid1 - (ref_width // 5):mid1 + (ref_width // 5), :].mean(axis=0)
+    #
+    # y_center0 = (cross0 * np.arange(cross0.shape[0])).sum() / cross0.sum()
+    # y_center1 = (cross1 * np.arange(cross1.shape[0])).sum() / cross1.sum()
+    # y_center0 = int(np.round(y_center0, 0))
+    # y_center1 = int(np.round(y_center1, 0))
 
-    print('INIT CAMERA NULL FRAME')
-    conn1.send((0, 500))
-    run_frames(frames=nfs, pad=False)  # init frames, "batch" 0
-    wait_for_sig(conn1)
+    if arr.max() > 100:
 
+        cross0_bool = (cross0 > cross0.max() * 0.2)
+        s0 = cross0_bool.argmax()
+        e0 = 70 - np.flip(cross0_bool.copy()).argmax()
+        y_center0 = (e0 + s0) / 2
 
-def process_frames(ampls_arr, expected_shape, noise_level=0.1, sim_level=5):
+        cross1_bool = (cross1 > cross1.max() * 0.2)
+        s1 = cross1_bool.argmax()
+        e1 = 70 - np.flip(cross1_bool.copy()).argmax()
+        y_center1 = (e1 + s1) / 2
 
-    try:
+        y_center0 = int(np.round(y_center0, 0))
+        y_center1 = int(np.round(y_center1, 0))
 
-        # diffs = np.diff(ampls_arr[:, m // 2])
-        # large_diffs = np.where(np.abs(diffs) > noise_level)[0]
-        # start_indx = large_diffs[0] + 1
-        # end_indx = large_diffs[-1] + 1
-        # # end_indx = start_indx + 240
+    else:
 
-        non_null_mask = (ampls_arr[:, m//2] > noise_level)
-        non_null_indxs = np.arange(ampls_arr.shape[0])[non_null_mask]
-        start_indx = non_null_indxs[0]
-        end_indx = non_null_indxs[-1] + 1
+        y_center0 = cross0.argmax()
+        y_center1 = cross1.argmax()
 
-        ampls_arr_cut = ampls_arr[start_indx:end_indx, :].copy()
+    bright_ratio = cross1.mean() / cross0.mean()
+    frame0 = frame0 * bright_ratio
 
-        num_f = ampls_arr_cut.shape[0]
+    y_delta_0 = y_center0 - y_center
+    y_delta_1 = y_center1 - y_center
 
-        print(start_indx, end_indx, end_indx - start_indx)
+    edge_cut = np.maximum(np.abs(y_delta_0), np.abs(y_delta_1))
 
-        # fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
-        # axs4.plot(ampls_arr[:, m // 2], linestyle='', marker='o', c='b')
-        # plt.show()
+    frame0 = np.roll(frame0, -y_delta_0, axis=1)
+    frame1 = np.roll(frame1, -y_delta_1, axis=1)
 
-        if num_f == expected_shape:
+    frame0 = frame0[:ref_indxs_0[1], :]
+    frame1 = frame1[ref_indxs_1[0]:, :]
+    frame_both = np.concatenate((frame0, frame1))
 
-            ampls_arr_split = [ampls_arr_cut[ii * 24:(ii + 1) * 24, :] for ii in range(num_f//24)]
+    frame_both[:, :edge_cut] = 0
+    frame_both[:, -edge_cut:] = 0
 
-            frame_similarity = np.array([np.linalg.norm(ampls_arr_split[ii] - ampls_arr_split[ii + 1])
-                                         for ii in range(num_f//24 - 1)])
-
-            print(frame_similarity)
-
-            reps = np.where(frame_similarity < sim_level)[0]
-
-            if len(reps > 0):
-                print('deleting frames', reps)
-                for ii in reps:
-                    ampls_arr_cut[ii * 24:(ii + 1) * 24, :] = np.NaN
-
-            return ampls_arr_cut, reps, 1
-
-        else:
-            print('wrong num frames')
-            return None, None, 0
-
-    except Exception as e:
-        print(e)
-        return None, None, 0
+    return frame_both
 
 
+def find_spot_ampls(arrs_in):
+    arrs = np.array([recombine(arr.T) for arr in arrs_in])
 
+    mask = arrs < 3
+    arrs -= 2
+    arrs[mask] = 0
+
+    def spot_s(i):
+        return np.s_[:, x_edge_indxs[2 * i]:x_edge_indxs[2 * i + 1], y_centers[i] - 1:y_centers[i] + 2]
+
+    spot_powers = cp.array([arrs[spot_s(i)].mean(axis=(1, 2)) for i in range(m + 1)])
+
+    spot_ampls = cp.sqrt(spot_powers)
+
+    spot_ampls = np.flip(spot_ampls, axis=0)
+
+    ratio = spot_ampls[ref_spot, :] / spot_ampls[ref_spot + 1, :]
+
+    spot_ampls[ref_spot + 1:, :] *= ratio[None, :]
+
+    spot_ampls = np.delete(spot_ampls.get(), ref_spot, 0)
+
+    return spot_ampls.T
+
+
+actual_uppers_arr_256 = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_256.npy")
+
+actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot + 1]
+
+uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
+uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
+
+k = np.abs(np.linspace(-1, 1, 256) - 0.1).argmin()
+z0 = actual_uppers_arr_256[k, ...].sum(axis=0)
+
+gpu_actual_uppers_arr_256 = cp.asarray(actual_uppers_arr_256)
 
 if __name__ == '__main__':
 
@@ -220,9 +245,7 @@ if __name__ == '__main__':
     # SLM display #
     ################
 
-    slm = SLMdisplay(0)
-    slm_img = np.full((n, m), 1.)
-    update_slm(slm_img, lut=False)
+    slm = SLMdisplay()
 
     ################
     # DMD display #
@@ -235,6 +258,8 @@ if __name__ == '__main__':
     window.activate()
     window.show()
 
+    dmd_clock = clock.Clock()
+
     @window.event
     def on_draw(dt):
         global cp_arr, frame_count, target_frames
@@ -244,153 +269,354 @@ if __name__ == '__main__':
 
     screen, cuda_buffer, context = setup(1920, 1080)
 
-    batch_num = 0
+    null_frame = dmd_one_frame(np.zeros((n, m)), ref=0)[0]
+    null_frames = [null_frame for _ in range(10)]
+
+    full_frame = dmd_one_frame(np.ones((n, m)), ref=0)[0]
+    full_frames = [full_frame for _ in range(10)]
+
+    ################
+    # Pylon camera #
+    ################
+
+    # imageWindow = pylon.PylonImageWindow()
+    # imageWindow.Create(1)
+
+    # Create an instant camera object with the camera device found first.
+    camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
+    camera.Open()
+
+    # Print the model name of the camera.
+    print("Using device ", camera.GetDeviceInfo().GetModelName())
+    print()
+
+    pylon.FeaturePersistence.Load("./tools/pylon_settings.pfs", camera.GetNodeMap())
+
+
+    class CaptureProcess(pylon.ImageEventHandler):
+        def __init__(self):
+            super().__init__()
+
+            self.frames = []
+
+        def OnImageGrabbed(self, cam, grab_result):
+            if grab_result.GrabSucceeded():
+
+                image = grab_result.GetArray()
+
+                if image.max() > 10:
+                    self.frames.append(image)
+
+                self.frames = self.frames[-10000:]
+
+                # imageWindow.SetImage(grab_result)
+                # imageWindow.Show()
+
+
+    # register the background handler and start grabbing using background pylon thread
+    capture = CaptureProcess()
+    camera.RegisterImageEventHandler(capture, pylon.RegistrationMode_ReplaceAll, pylon.Cleanup_None)
+    camera.StartGrabbing(pylon.GrabStrategy_OneByOne, pylon.GrabLoop_ProvidedByInstantCamera)
+    time.sleep(1)
 
     #####################
     # find norm values #
     #####################
 
-    ampl_norm_val = 0.4
-    arr = np.full((n, m), ampl_norm_val)
-    update_slm(arr, lut=False)
+    ampl_norm_val = 0.1
 
-    null_frame = dmd_one_frame(np.zeros((n, m)))[0]
-    null_frames = [null_frame for _ in range(20)]
+    k = np.abs(np.linspace(-1, 1, 256) - ampl_norm_val).argmin()
+    slm_arr = actual_uppers_arr_256[k, ...].copy()
 
-    full_frame = dmd_one_frame(np.ones((n, m)))[0]
-    full_frames = [full_frame for _ in range(20)]
+    ### Aref ###################
 
-    run_frames(frames=full_frames, pad=False)
+    ref_block_val = 1.
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    update_slm(slm_arr, lut=True, ref=True)
+    dmd_arr = np.zeros((n, m))
+    target_frames = dmd_one_frame(dmd_arr, ref=1)
+    cp_arr = target_frames[0]
+    frame_count = 0
 
-    # view_camera()
+    app.__init__(clock=dmd_clock, framerate=0, backend=backend)
 
-    k = int(np.argmin(np.abs(np.linspace(0, 1, 1024) - ampl_norm_val)))
+    app.run(clock=dmd_clock, framerate=0, framecount=1)
+    capture.frames = []
+    capture.timestamps = []
+    time.sleep(2)
+    frs = np.array(capture.frames[-1000:])
+    print(frs.shape)
+    np.save('./tools/temp_ref.npy', frs)
+    Aref = find_spot_ampls(frs).mean(axis=0)
+    capture.frames = []
+    capture.timestamps = []
 
-    theory = actual_uppers_arr_1024[..., k].sum(axis=0)
-    theory_norm_val = theory.max()
-    indx = np.argmax(theory)
+    ### A0 ###################
 
-    init_cam_dmd_scan()
-    print()
+    ref_block_val = 0.
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    update_slm(slm_arr, lut=True, ref=True)
+    dmd_arr = np.ones((n, m))
+    target_frames = dmd_one_frame(dmd_arr, ref=1)
+    cp_arr = target_frames[0]
+    frame_count = 0
+    app.run(clock=dmd_clock, framerate=0, framecount=1)
+    time.sleep(2)
+    frs = np.array(capture.frames[-1000:])
+    np.save('./tools/temp_0.npy', frs)
+    A0 = find_spot_ampls(frs).mean(axis=0)
+    capture.frames = []
+    capture.timestamps = []
 
-    dmd_frame = dmd_one_frame(np.ones((n, m)))
-    run_frames(frames=dmd_frame, pad=False)
+    ### Aboth ###################
 
-    print('find norm values')
-    conn1.send((2, 200))
-    wait_for_sig(conn1)
-    loaded = np.load('./MNIST/pylon_captures/ampls/batch_{}.npy'.format(0))
-    meas = loaded.mean(axis=0)
+    ref_block_val = 1.
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    update_slm(slm_arr, lut=True, ref=True)
+    dmd_arr = np.ones((n, m))
+    target_frames = dmd_one_frame(dmd_arr, ref=1)
+    cp_arr = target_frames[0]
+    frame_count = 0
+    app.run(clock=dmd_clock, framerate=0, framecount=1)
+    time.sleep(2)
+    frs = np.array(capture.frames[-1000:])
+    np.save('./tools/temp_both.npy', frs)
+    Aboth = find_spot_ampls(frs).mean(axis=0)
+    capture.frames = []
+    capture.timestamps = []
 
-    meas_norm_val = meas[indx]
+    Aref[ref_spot] = Aboth[ref_spot] - A0[ref_spot]
 
-    print(meas)
-    print()
-    print(theory_norm_val, meas_norm_val)
-
-    fig2, axs2 = plt.subplots(1, 1, figsize=(8, 4))
-    axs2.set_ylim(0, 66)
-    axs2.plot(theory, linestyle='', marker='o', c='b')
-    axs2.plot(meas*theory_norm_val/meas_norm_val, linestyle='', marker='x', c='r')
+    fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
+    axs1.set_ylim(0, 16)
+    axs1.plot(Aref, linestyle='', marker='o', c='orange')
+    axs1.plot(A0, linestyle='', marker='o', c='g')
+    axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
+    axs1.plot(Aboth, linestyle='', marker='x', c='r')
     plt.draw()
 
     plt.show()
 
-    print()
-    print('############')
-    print()
+    np.save('./tools/Aref.npy', Aref)
 
-    # conn1.send((2, 400))  # 0 used for init, 1 used to terminate
-    # run_frames(frames=null_frames)
-    # wait_for_sig(conn1)
+    ######################################
 
+    Aref = np.load('./tools/Aref.npy')
+    ampl_norm_val = 0.1
 
-    ###########################
-    #  #
-    ###########################
+    ref_block_val = 1.
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
 
-    w1 = np.load('./MNIST/testX/w1.npy')
-    w2 = np.load('./MNIST/testX/w2.npy')
-    update_slm(w1, lut=True)
+    batch_size = 240
+    num_frames = 10
 
-    null_frames = [null_frame for _ in range(200)]
-    conn1.send((2, 1000))  # 0 used for init, 1 used to terminate
-    run_frames(frames=null_frames)
-    wait_for_sig(conn1)
+    w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
+    w2 = np.load('D:/MNIST/data/best_w2_offline.npy')
 
-    z1s = np.full((4800, m), np.nan)
-    xs = np.load('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/xs.npy')
-    ys = np.load('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/ys.npy')
+    update_slm(w1, lut=True, ref=True)
+    time.sleep(0.7)
 
-    for test_batch in range(20):
+    all_z1s = []
+    all_theories = []
 
-        frs = cp.load('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/frames/rgb24_{}.npy'.format(test_batch))
-        batch_frames = [frs[i, ...] for i in range(10)]
+    target_frames = cp.zeros((16, 1080, 1920, 4), dtype=cp.uint8)
+    target_frames[..., -1] = 255
+    fc = target_frames.shape[0] - 1
+    cp_arr = target_frames[0]
+    frame_count = 0
+    for _ in range(5):
+        capture.frames = []
+        app.run(clock=dmd_clock, framerate=0, framecount=fc)
+        time.sleep(0.1)
 
-        conn1.send((test_batch + 2, 500))  # 0 used for init, 1 used to terminate
-        run_frames(frames=batch_frames)
-        wait_for_sig(conn1)
+    for k in range(5):
 
-        ampls = np.load('./MNIST/pylon_captures/ampls/batch_{}.npy'.format(test_batch))
+        batch_indxs = np.random.randint(0, 5000, batch_size)
+        target_frames[4:-2, :, :, :-1] = make_dmd_batch(testX_cp[batch_indxs, :], 1, ref_block_val, batch_size,
+                                                        num_frames)
 
-        measureds, repeats, success = process_frames(ampls, 240, noise_level=1)
+        xs = testX[batch_indxs, :].copy()
 
-        if success:
-            result = measureds * theory_norm_val / meas_norm_val
-            print(colored('success', 'green'))
+        fc = target_frames.shape[0] - 1
+        cp_arr = target_frames[0]
+        frame_count = 0
+
+        capture.frames = []
+        app.run(clock=dmd_clock, framerate=0, framecount=fc)
+        time.sleep(0.1)
+
+        frames = np.array(capture.frames.copy())
+
+        ampls = find_spot_ampls(frames)
+        if ampls.shape[0] == 240:
+            z1s = ampls - Aref
+            z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
+            z1s = np.delete(z1s, ref_spot, axis=1)
+
+            theories = np.dot(xs, w1)
+
+            all_z1s.append(z1s)
+            all_theories.append(theories)
+
+    all_z1s = np.array(all_z1s)
+    all_z1s = all_z1s.reshape(all_z1s.shape[0] * 240, m - 1)
+    all_theories = np.array(all_theories)
+    all_theories = all_theories.reshape(all_theories.shape[0] * 240, m - 1)
+
+    print(all_z1s.shape, all_theories.shape)
+
+    np.save('./tools/temp_z1s.npy', all_z1s)
+    np.save('./tools/temp_theories.npy', all_theories)
+
+    def line(x, grad, c):
+        return (grad * x) + c
+
+    norm_params = np.array([curve_fit(line, all_theories[:, j], all_z1s[:, j])[0]
+                            for j in range(m - 1)])
+
+    all_z1s -= norm_params[:, 1]
+    all_z1s /= norm_params[:, 0]
+
+    print(norm_params)
+
+    fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
+    axs3.set_ylim(-10, 10)
+    axs3.plot([-10, 10], [-10, 10], c='black')
+    for j in range(m - 1):
+        axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
+    plt.draw()
+
+    fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
+    axs4.set_ylim(-10, 10)
+    axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
+    axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
+    plt.draw()
+
+    plt.show()
+
+    # breakpoint()
+
+    ###########
+    # TESTING #
+    ###########
+
+    start_time = time.time()
+
+    test_z1s = np.full((5000, m - 1), np.nan)
+
+    for test_batch_num in range(21):
+
+        print(test_batch_num)
+
+        if test_batch_num == 20:
+            vecs = testX_cp[4800 - 40:, :].copy()
+            vecs[:40, :] = 0
         else:
-            print(colored('processing error, skipping', 'red'))
-            result = np.nan
+            vecs = testX_cp[test_batch_num * 240:(test_batch_num + 1) * 240, :].copy()
 
-        z1s[test_batch * 240:(test_batch + 1) * 240, :] = result
+        print(vecs.shape)
 
-        print()
+        target_frames[4:-2, ..., :-1] = make_dmd_batch(vecs, 1, ref_block_val, batch_size, num_frames)
 
-    np.save('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/measured/measured_arr_raw.npy', z1s)
+        fc = target_frames.shape[0] - 1
+        cp_arr = target_frames[0]
+        frame_count = 0
 
-    mask = ~np.isnan(z1s[:, 0])
-    z1s = z1s[mask]
-    xss = xs[mask]
-    yss = ys[mask]
+        capture.frames = []
 
-    theories = (xss[:, None] * w1.T).transpose(0, 2, 1).sum(axis=1)
+        app.run(clock=dmd_clock, framerate=0, framecount=fc)
 
-    z1s_sign = np.sign(theories)
-    z1s *= z1s_sign
+        time.sleep(0.1)
 
-    np.save('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/measured/measured_arr.npy', z1s)
-    np.save('./MNIST/testX/SHUFFLE_0_NOREMAP_INDIVIDUAL/theory/theory_arr.npy', theories)
+        frames = np.array(capture.frames.copy(), dtype=np.uint8)
+        ampls = find_spot_ampls(frames)
 
-    a1 = z1s.copy()
-    z2 = np.dot(a1, w2)
-    a2 = softmax(z2)
+        np.save('D:/MNIST/data/testing/images/images_batch_{}.npy'
+                .format(test_batch_num), frames)
+        np.save('D:/MNIST/data/testing/ampls/ampls_batch_{}.npy'
+                .format(test_batch_num), ampls)
 
-    pred = a2.argmax(axis=1)
-    label = yss.argmax(axis=1)
+        if test_batch_num == 20:
+            xs = testX[4800:, :].copy()
+        else:
+            xs = testX[test_batch_num * 240:(test_batch_num + 1) * 240, :].copy()
+
+        if ampls.shape[0] == batch_size:
+
+            meas = ampls.copy().reshape((num_frames, batch_size // num_frames, m))
+            diffs = np.abs(np.array([meas[k + 1, :, m // 3] - meas[k, :, m // 3]
+                                     for k in range(num_frames - 1)])).mean(axis=1)
+            diffs /= diffs.max()
+            repeats = (diffs < 0.25).sum() > 0
+
+            if repeats:
+                print(colored('repeated frames, skipping', 'red'))
+
+        else:
+            print(colored('wrong num frames: {}'.format(ampls.shape[0]), 'red'))
+
+        if ampls.shape[0] == batch_size and not repeats:
+
+            z1s = ampls - Aref
+            z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
+            z1s = np.delete(z1s, ref_spot, axis=1)
+
+            z1s -= norm_params[:, 1]
+            z1s /= norm_params[:, 0]
+
+            if test_batch_num == 20:
+                z1s = z1s[40:, :]
+                test_z1s[4800:, :] = z1s.copy()
+
+            else:
+                test_z1s[test_batch_num * 240:(test_batch_num + 1) * 240, :] = z1s.copy()
+
+            theories = np.dot(xs, w1.copy())
+
+        else:
+            if test_batch_num == 20:
+                z1s = np.full((200, m - 1), np.nan)
+                theories = np.full((200, m - 1), np.nan)
+            else:
+                z1s = np.full((batch_size, m - 1), np.nan)
+                theories = np.full((batch_size, m - 1), np.nan)
+
+        np.save('D:/MNIST/data/testing/measured/measured_arr_batch_{}.npy'
+                .format(test_batch_num), z1s)
+        np.save('D:/MNIST/data/testing/theory/theory_arr_batch_{}.npy'
+                .format(test_batch_num), theories)
+
+    mask = ~np.isnan(test_z1s[:, 0])
+    test_z1s = test_z1s[mask]
+    xs = testX.copy()[mask]
+    ys = testY.copy()[mask]
+
+    # 1 layer
+    # a1s = softmax(test_z1s)
+    # pred = a1s.argmax(axis=1)
+
+    def relu(x):
+        return np.maximum(0, x)
+
+    # 2 layer
+    a1s = relu(test_z1s)
+    z2s = np.dot(a1s, w2)
+    a2s = softmax(z2s)
+    pred = a2s.argmax(axis=1)
+
+    label = ys.argmax(axis=1)
 
     acc = accuracy(pred, label)
 
+    print(time.time() - start_time)
+
+    print('\n######################################################################')
     print(colored('accuracy : {:.2f}'.format(acc), 'green'))
+    print('######################################################################\n')
 
-    ###########
-    # cleanup #
-    ###########
-
-    conn1.send(1)  # stop camera
+    print()
+    camera.Close()
+    # imageWindow.Close()
     context.pop()
-    print('closed dmd')
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
