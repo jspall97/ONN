@@ -9,11 +9,11 @@ dims = sys.argv[1:4]
 n = int(dims[0])
 m = int(dims[1])
 
-x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
-y_center_indxs = np.load('./tools/y_center_indxs.npy')
-
-area_height = 7
-half_height = area_height // 2
+# x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
+# y_center_indxs = np.load('./tools/y_center_indxs.npy')
+#
+# area_height = 7
+# half_height = area_height // 2
 
 
 def find_spot_ampls(arr):

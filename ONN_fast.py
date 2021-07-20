@@ -34,7 +34,7 @@ dims = sys.argv[1:4]
 n = int(dims[0])
 m = int(dims[1])
 
-ref_spot = m//2 - 1
+ref_spot = m//2
 
 ref_block_val = 1.
 batch_size = 240
@@ -146,7 +146,7 @@ def dmd_one_frame(arr, ref):
 
 x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
 y_centers = np.load('./tools/y_centers_list.npy')
-recomb_params = (35, 619, 84, np.array([602, 637]), np.array([67, 102]), 70)
+recomb_params = (35, 596, 61, np.array([554, 639]), np.array([19, 104]), 170)
 y_center, mid0, mid1, ref_indxs_0, ref_indxs_1, ref_width = recomb_params
 
 
@@ -527,11 +527,11 @@ if __name__ == '__main__':
     w1 = np.random.normal(0, 0.5, (n, m-1))
     w1 = np.clip(w1, -lim_arr, lim_arr)
 
-    np.random.seed(200)
-    w2 = np.random.normal(0, 0.5, (m - 1, 10))
+    # np.random.seed(200)
+    # w2 = np.random.normal(0, 0.5, (m - 1, 10))
 
     np.save('D:/MNIST/data/w1_0.npy', w1)
-    np.save('D:/MNIST/data/w2_0.npy', w2)
+    # np.save('D:/MNIST/data/w2_0.npy', w2)
 
     update_slm(w1, lut=True, ref=True)
     time.sleep(1)
@@ -539,18 +539,18 @@ if __name__ == '__main__':
     m_dw1 = np.zeros((n, m-1))
     v_dw1 = np.zeros((n, m-1))
 
-    m_dw2 = np.zeros((m-1, 10))
-    v_dw2 = np.zeros((m-1, 10))
+    # m_dw2 = np.zeros((m-1, 10))
+    # v_dw2 = np.zeros((m-1, 10))
 
     beta1 = 0.9
     beta2 = 0.999
-    # adam_params = (m_dw1, v_dw1, beta1, beta2)
-    adam_params = (m_dw1, v_dw1, m_dw2, v_dw2, beta1, beta2)
+    adam_params = (m_dw1, v_dw1, beta1, beta2)
+    # adam_params = (m_dw1, v_dw1, m_dw2, v_dw2, beta1, beta2)
 
-    # dnn = DNN_1d(*adam_params, x=trainX, y=trainY, w1_0=w1, batch_size=batch_size, num_batches=num_batches, lr=10e-3)
+    dnn = DNN_1d(*adam_params, x=trainX, y=trainY, w1_0=w1, batch_size=batch_size, num_batches=num_batches, lr=10e-3)
 
-    dnn = DNN(*adam_params, x=trainX, y=trainY, w1_0=w1, w2_0=w2, batch_size=batch_size, num_batches=num_batches,
-              lr=20e-3, nonlinear=True)
+    # dnn = DNN(*adam_params, x=trainX, y=trainY, w1_0=w1, w2_0=w2, batch_size=batch_size, num_batches=num_batches,
+    #           lr=20e-3, nonlinear=True)
 
     loss = [5]
     accs = []
@@ -752,7 +752,7 @@ if __name__ == '__main__':
 
             ampls = find_spot_ampls(frames)
 
-            np.save('D:/MNIST/data/training/images/images_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), frames)
+            np.save('D:/MNIST/raw_images/training/images/images_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), frames)
             np.save('D:/MNIST/data/training/ampls/ampls_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), ampls)
 
             t3 = time.time()
@@ -798,18 +798,22 @@ if __name__ == '__main__':
 
                 dnn.w1 = np.clip(dnn.w1.copy(), -uppers1_ann, uppers1_ann)
 
-                update_slm(dnn.w1.copy(), lut=True, ref=True)
+                w1_noisy = dnn.w1.copy()
+                w1_noisy += np.random.normal(0, 0.1, w1_noisy.shape)
+
+                update_slm(w1_noisy, lut=True, ref=True)
                 # time.sleep(0.7)
 
                 if dnn.loss < loss[-1]:
                     best_w1 = dnn.w1.copy()
-                    best_w2 = dnn.w2.copy()
+                    # best_w2 = dnn.w2.copy()
 
                 loss.append(dnn.loss)
                 print(colored('loss : {:.2f}'.format(dnn.loss), 'green'))
                 np.save('D:/MNIST/data/loss.npy', np.array(loss))
 
-                new_adam_params = np.array([dnn.m_dw1, dnn.v_dw1, dnn.m_dw2, dnn.v_dw2, dnn.beta1, dnn.beta2])
+                # new_adam_params = np.array([dnn.m_dw1, dnn.v_dw1, dnn.m_dw2, dnn.v_dw2, dnn.beta1, dnn.beta2])
+                new_adam_params = np.array([dnn.m_dw1, dnn.v_dw1, dnn.beta1, dnn.beta2])
                 np.save('D:/MNIST/data/adam_params.npy', new_adam_params)
 
             else:
@@ -825,7 +829,7 @@ if __name__ == '__main__':
                     .format(epoch_num, batch_num), theories)
 
             np.save('D:/MNIST/data/w1/w1_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w1))
-            np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w2))
+            # np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w2))
 
             for j in range(m - 1):
                 eg_line[j].set_xdata(theories[:, j])
@@ -853,12 +857,15 @@ if __name__ == '__main__':
         ##################
 
         dnn.w1 = best_w1.copy()
-        dnn.w2 = best_w2.copy()
+        # dnn.w2 = best_w2.copy()
 
         np.save('D:/MNIST/data/best_w1.npy', best_w1)
-        np.save('D:/MNIST/data/best_w2.npy', best_w2)
+        # np.save('D:/MNIST/data/best_w2.npy', best_w2)
 
-        update_slm(dnn.w1.copy(), lut=True, ref=True)
+        w1_noisy = dnn.w1.copy()
+        w1_noisy += np.random.normal(0, 0.1, w1_noisy.shape)
+
+        update_slm(w1_noisy, lut=True, ref=True)
         time.sleep(0.7)
 
         val_z1s = np.full((5000, m-1), np.nan)
@@ -888,7 +895,7 @@ if __name__ == '__main__':
             frames = np.array(capture.frames.copy(), dtype=np.uint8)
             ampls = find_spot_ampls(frames)
 
-            np.save('D:/MNIST/data/validation/images/images_epoch_{}_batch_{}.npy'
+            np.save('D:/MNIST/raw_images/validation/images/images_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), frames)
             np.save('D:/MNIST/data/validation/ampls/ampls_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), ampls)
@@ -952,8 +959,8 @@ if __name__ == '__main__':
 
         dnn.feedforward(val_z1s)
 
-        # pred = dnn.a1.argmax(axis=1)
-        pred = dnn.a2.argmax(axis=1)
+        pred = dnn.a1.argmax(axis=1)
+        # pred = dnn.a2.argmax(axis=1)
         label = ys.argmax(axis=1)
 
         acc = accuracy(pred, label)

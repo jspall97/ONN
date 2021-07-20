@@ -6,7 +6,7 @@ dims = sys.argv[1:4]
 n = int(dims[0])
 m = int(dims[1])
 
-ref_spot = m//2 - 1
+ref_spot = m//2
 
 ######################################################
 # SLM1 (Santec) #
