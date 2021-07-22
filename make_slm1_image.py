@@ -121,7 +121,7 @@ def update_params(ref_block_val, batch_size, num_frames):
     # slm_centers_x_grid, slm_centers_y_grid = np.meshgrid(slm_centers_x, slm_centers_y)
 
     dmd_block_w = int((slm_block_w - 1) * dmd_w / slm_w)
-    dmd_block_h = int((slm_block_h - 1) * 0.8 * dmd_h / slm_h)
+    dmd_block_h = int((slm_block_h - 1) * 0.5 * dmd_h / slm_h)
 
     if dmd_block_h % 2 == 0:
         dmd_block_h -= 1

@@ -146,7 +146,7 @@ def dmd_one_frame(arr, ref):
 
 x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
 y_centers = np.load('./tools/y_centers_list.npy')
-recomb_params = (35, 596, 61, np.array([554, 639]), np.array([19, 104]), 170)
+recomb_params = (35, 603, 68, np.array([578, 628]), np.array([43, 93]), 100)
 y_center, mid0, mid1, ref_indxs_0, ref_indxs_1, ref_width = recomb_params
 
 
@@ -165,31 +165,34 @@ def recombine(arr):
     # y_center0 = int(np.round(y_center0, 0))
     # y_center1 = int(np.round(y_center1, 0))
 
-    if arr.max() > 100:
-
-        cross0_bool = (cross0 > cross0.max() * 0.2)
-        s0 = cross0_bool.argmax()
-        e0 = 70 - np.flip(cross0_bool.copy()).argmax()
-        y_center0 = (e0 + s0) / 2
-
-        cross1_bool = (cross1 > cross1.max() * 0.2)
-        s1 = cross1_bool.argmax()
-        e1 = 70 - np.flip(cross1_bool.copy()).argmax()
-        y_center1 = (e1 + s1) / 2
-
-        y_center0 = int(np.round(y_center0, 0))
-        y_center1 = int(np.round(y_center1, 0))
-
-    else:
-
-        y_center0 = cross0.argmax()
-        y_center1 = cross1.argmax()
+    # if arr.max() > 100:
+    #
+    #     cross0_bool = (cross0 > cross0.max() * 0.2)
+    #     s0 = cross0_bool.argmax()
+    #     e0 = 70 - np.flip(cross0_bool.copy()).argmax()
+    #     y_center0 = (e0 + s0) / 2
+    #
+    #     cross1_bool = (cross1 > cross1.max() * 0.2)
+    #     s1 = cross1_bool.argmax()
+    #     e1 = 70 - np.flip(cross1_bool.copy()).argmax()
+    #     y_center1 = (e1 + s1) / 2
+    #
+    #     y_center0 = int(np.round(y_center0, 0))
+    #     y_center1 = int(np.round(y_center1, 0))
+    #
+    # else:
+    #
+    #     y_center0 = cross0.argmax()
+    #     y_center1 = cross1.argmax()
 
     bright_ratio = cross1.mean() / cross0.mean()
     frame0 = frame0 * bright_ratio
 
-    y_delta_0 = y_center0 - y_center
-    y_delta_1 = y_center1 - y_center
+    # y_delta_0 = y_center0 - y_center
+    # y_delta_1 = y_center1 - y_center
+
+    y_delta_0 = 0 #7
+    y_delta_1 = 1 #0
 
     edge_cut = np.maximum(np.abs(y_delta_0), np.abs(y_delta_1))
 
@@ -316,7 +319,7 @@ if __name__ == '__main__':
                 if image.max() > 10:
                     self.frames.append(image)
 
-                self.frames = self.frames[-10000:]
+                self.frames = self.frames[-1001:]
 
                 # imageWindow.SetImage(grab_result)
                 # imageWindow.Show()
@@ -336,76 +339,76 @@ if __name__ == '__main__':
     k = np.abs(np.linspace(-1, 1, 256) - ampl_norm_val).argmin()
     slm_arr = actual_uppers_arr_256[k, ...].copy()
 
-    ### Aref ###################
+    # ### Aref ###################
+    #
+    # ref_block_val = 1.
+    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    # update_slm(slm_arr, lut=True, ref=True)
+    # dmd_arr = np.zeros((n, m))
+    # target_frames = dmd_one_frame(dmd_arr, ref=1)
+    # cp_arr = target_frames[0]
+    # frame_count = 0
+    #
+    # app.__init__(clock=dmd_clock, framerate=0, backend=backend)
+    #
+    # app.run(clock=dmd_clock, framerate=0, framecount=1)
+    # capture.frames = []
+    # capture.timestamps = []
+    # time.sleep(2)
+    # frs = np.array(capture.frames[-1000:])
+    # print(frs.shape)
+    # np.save('./tools/temp_ref.npy', frs)
+    # Aref = find_spot_ampls(frs).mean(axis=0)
+    # capture.frames = []
+    # capture.timestamps = []
+    #
+    # ### A0 ###################
+    #
+    # ref_block_val = 0.
+    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    # update_slm(slm_arr, lut=True, ref=True)
+    # dmd_arr = np.ones((n, m))
+    # target_frames = dmd_one_frame(dmd_arr, ref=1)
+    # cp_arr = target_frames[0]
+    # frame_count = 0
+    # app.run(clock=dmd_clock, framerate=0, framecount=1)
+    # time.sleep(2)
+    # frs = np.array(capture.frames[-1000:])
+    # np.save('./tools/temp_0.npy', frs)
+    # A0 = find_spot_ampls(frs).mean(axis=0)
+    # capture.frames = []
+    # capture.timestamps = []
+    #
+    # ### Aboth ###################
+    #
+    # ref_block_val = 1.
+    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    # update_slm(slm_arr, lut=True, ref=True)
+    # dmd_arr = np.ones((n, m))
+    # target_frames = dmd_one_frame(dmd_arr, ref=1)
+    # cp_arr = target_frames[0]
+    # frame_count = 0
+    # app.run(clock=dmd_clock, framerate=0, framecount=1)
+    # time.sleep(2)
+    # frs = np.array(capture.frames[-1000:])
+    # np.save('./tools/temp_both.npy', frs)
+    # Aboth = find_spot_ampls(frs).mean(axis=0)
+    # capture.frames = []
+    # capture.timestamps = []
+    #
+    # Aref[ref_spot] = Aboth[ref_spot] - A0[ref_spot]
 
-    ref_block_val = 1.
-    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    update_slm(slm_arr, lut=True, ref=True)
-    dmd_arr = np.zeros((n, m))
-    target_frames = dmd_one_frame(dmd_arr, ref=1)
-    cp_arr = target_frames[0]
-    frame_count = 0
+    # fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
+    # axs1.set_ylim(0, 16)
+    # axs1.plot(Aref, linestyle='', marker='o', c='orange')
+    # axs1.plot(A0, linestyle='', marker='o', c='g')
+    # axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
+    # axs1.plot(Aboth, linestyle='', marker='x', c='r')
+    # plt.draw()
+    #
+    # plt.show()
 
-    app.__init__(clock=dmd_clock, framerate=0, backend=backend)
-
-    app.run(clock=dmd_clock, framerate=0, framecount=1)
-    capture.frames = []
-    capture.timestamps = []
-    time.sleep(2)
-    frs = np.array(capture.frames[-1000:])
-    print(frs.shape)
-    np.save('./tools/temp_ref.npy', frs)
-    Aref = find_spot_ampls(frs).mean(axis=0)
-    capture.frames = []
-    capture.timestamps = []
-
-    ### A0 ###################
-
-    ref_block_val = 0.
-    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    update_slm(slm_arr, lut=True, ref=True)
-    dmd_arr = np.ones((n, m))
-    target_frames = dmd_one_frame(dmd_arr, ref=1)
-    cp_arr = target_frames[0]
-    frame_count = 0
-    app.run(clock=dmd_clock, framerate=0, framecount=1)
-    time.sleep(2)
-    frs = np.array(capture.frames[-1000:])
-    np.save('./tools/temp_0.npy', frs)
-    A0 = find_spot_ampls(frs).mean(axis=0)
-    capture.frames = []
-    capture.timestamps = []
-
-    ### Aboth ###################
-
-    ref_block_val = 1.
-    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    update_slm(slm_arr, lut=True, ref=True)
-    dmd_arr = np.ones((n, m))
-    target_frames = dmd_one_frame(dmd_arr, ref=1)
-    cp_arr = target_frames[0]
-    frame_count = 0
-    app.run(clock=dmd_clock, framerate=0, framecount=1)
-    time.sleep(2)
-    frs = np.array(capture.frames[-1000:])
-    np.save('./tools/temp_both.npy', frs)
-    Aboth = find_spot_ampls(frs).mean(axis=0)
-    capture.frames = []
-    capture.timestamps = []
-
-    Aref[ref_spot] = Aboth[ref_spot] - A0[ref_spot]
-
-    fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
-    axs1.set_ylim(0, 16)
-    axs1.plot(Aref, linestyle='', marker='o', c='orange')
-    axs1.plot(A0, linestyle='', marker='o', c='g')
-    axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
-    axs1.plot(Aboth, linestyle='', marker='x', c='r')
-    plt.draw()
-
-    plt.show()
-
-    np.save('./tools/Aref.npy', Aref)
+    # np.save('./tools/Aref.npy', Aref)
 
     print('############')
 
@@ -428,7 +431,7 @@ if __name__ == '__main__':
         app.run(clock=dmd_clock, framerate=0, framecount=fc)
         time.sleep(0.1)
 
-    for k in range(5):
+    for k in range(1):
 
         np.random.seed(k)
         slm_arr = np.random.normal(0, 0.5, (n, m))
@@ -453,8 +456,6 @@ if __name__ == '__main__':
         print(frames.shape)
 
         ampls = find_spot_ampls(frames)
-
-
 
         if ampls.shape[0] == 240:
 
@@ -493,28 +494,41 @@ if __name__ == '__main__':
 
     print(norm_params)
 
-    fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
+    fig3, [[axs0, axs1, axs2], [axs3, axs4, axs5]] = plt.subplots(2, 3, figsize=(8, 4))
+
     axs3.set_ylim(-10, 10)
-    axs3.plot([-10, 10], [-10, 10], c='black')
-    for j in range(m-1):
-        axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
-    plt.draw()
 
-    fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
-    axs4.set_ylim(-10, 10)
-    axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
-    axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
-    plt.draw()
+    axs1.set_ylim(-10, 10)
+    axs1.set_xlim(-10, 10)
 
+    axs5.set_ylim(0, 100)
+    axs5.set_xlim(0, 30)
+
+    axs2.set_ylim(0, 5)
+    axs2.set_xlim(0, 1500)
+
+    plt.ion()
     plt.show()
 
+    axs1.plot([-10, 10], [-10, 10], c='black')
+    eg_line = [axs1.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)[0]
+               for j in range(m - 1)]
+
+    th_line = axs3.plot(all_theories[0, :], linestyle='', marker='o', c='b')[0]
+    meas_line = axs3.plot(all_z1s[0, :], linestyle='', marker='x', c='r')[0]
+
+    img = axs0.imshow(frames[0], aspect='auto')
+
+    plt.draw()
+    plt.pause(0.01)
+
     # breakpoint()
+
+    # input('press anything to start...')
 
     ###########################
     # loop batches and epochs #
     ###########################
-
-    input('press anything to start...')
 
     num_batches = 50
     num_frames = 10
@@ -533,8 +547,13 @@ if __name__ == '__main__':
     np.save('D:/MNIST/data/w1_0.npy', w1)
     # np.save('D:/MNIST/data/w2_0.npy', w2)
 
-    update_slm(w1, lut=True, ref=True)
-    time.sleep(1)
+    # np.random.seed(321)
+    # sys_noise_arr = np.random.normal(0, 0.2, w1.shape)
+
+    np.random.seed(321)
+    sys_noise_arr = np.random.normal(1., 0.5, w1.shape)
+
+    np.save('D:/MNIST/data/sys_noise_arr.npy', sys_noise_arr)
 
     m_dw1 = np.zeros((n, m-1))
     v_dw1 = np.zeros((n, m-1))
@@ -555,35 +574,11 @@ if __name__ == '__main__':
     loss = [5]
     accs = []
 
-    fig3, [[axs0, axs1], [axs2, axs3]] = plt.subplots(2, 2, figsize=(8, 4))
-
-    axs0.set_ylim(-10, 10)
-    axs1.set_ylim(-10, 10)
-    axs1.set_xlim(-10, 10)
-
-    axs1.plot([-10, 10], [-10, 10], c='black')
-    eg_line = [axs1.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)[0]
-               for j in range(m - 1)]
-
-    th_line = axs0.plot(all_theories[0, :], linestyle='', marker='o', c='b')[0]
-    meas_line = axs0.plot(all_z1s[0, :], linestyle='', marker='x', c='r')[0]
-
-    axs2.set_ylim(0, 100)
-    axs2.set_xlim(0, 30)
-    axs2.plot(accs, linestyle='-', marker='x', c='b')
-
-    axs3.set_ylim(0, 5)
-    axs3.set_xlim(0, 1500)
-    axs3.plot(loss, linestyle='-', marker='', c='r')
-
-    plt.ion()
-    plt.show()
-    plt.draw()
-    plt.pause(0.001)
+    axs5.plot(accs, linestyle='-', marker='x', c='b')
+    axs2.plot(loss, linestyle='-', marker='', c='r')
 
     loop_clock = clock.Clock()
     loop_clock.tick()
-
 
     for epoch_num in range(num_epochs):
 
@@ -721,6 +716,13 @@ if __name__ == '__main__':
         norm_params = np.array([curve_fit(line, all_theories[..., j].flatten(), all_z1s[..., j].flatten())[0]
                                 for j in range(m - 1)])
 
+        w1_noisy = dnn.w1.copy()
+        # w1_noisy += np.random.normal(0, 0.3, w1_noisy.shape)
+        # w1_noisy += sys_noise_arr.copy()
+        # w1_noisy *= sys_noise_arr.copy()
+        update_slm(w1_noisy, lut=True, ref=True)
+        time.sleep(1)
+
         ##########################
 
         for batch_num in range(num_batches):
@@ -752,7 +754,7 @@ if __name__ == '__main__':
 
             ampls = find_spot_ampls(frames)
 
-            np.save('D:/MNIST/raw_images/training/images/images_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), frames)
+            np.save('D:/MNIST/raw_images_noise/training/images/images_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), frames)
             np.save('D:/MNIST/data/training/ampls/ampls_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), ampls)
 
             t3 = time.time()
@@ -799,8 +801,9 @@ if __name__ == '__main__':
                 dnn.w1 = np.clip(dnn.w1.copy(), -uppers1_ann, uppers1_ann)
 
                 w1_noisy = dnn.w1.copy()
-                w1_noisy += np.random.normal(0, 0.1, w1_noisy.shape)
-
+                # w1_noisy += np.random.normal(0, 0.3, w1_noisy.shape)
+                # w1_noisy += sys_noise_arr.copy()
+                # w1_noisy *= sys_noise_arr.copy()
                 update_slm(w1_noisy, lut=True, ref=True)
                 # time.sleep(0.7)
 
@@ -838,6 +841,8 @@ if __name__ == '__main__':
             th_line.set_ydata(theories[0, :])
             meas_line.set_ydata(z1s[0, :])
 
+            img.set_array(frames[0])
+
             plt.draw()
             # plt.pause(0.001)
             plt.gcf().canvas.draw_idle()
@@ -863,7 +868,9 @@ if __name__ == '__main__':
         # np.save('D:/MNIST/data/best_w2.npy', best_w2)
 
         w1_noisy = dnn.w1.copy()
-        w1_noisy += np.random.normal(0, 0.1, w1_noisy.shape)
+        # w1_noisy += np.random.normal(0, 0.3, w1_noisy.shape)
+        # w1_noisy += sys_noise_arr.copy()
+        # w1_noisy *= sys_noise_arr.copy()
 
         update_slm(w1_noisy, lut=True, ref=True)
         time.sleep(0.7)
@@ -895,7 +902,7 @@ if __name__ == '__main__':
             frames = np.array(capture.frames.copy(), dtype=np.uint8)
             ampls = find_spot_ampls(frames)
 
-            np.save('D:/MNIST/raw_images/validation/images/images_epoch_{}_batch_{}.npy'
+            np.save('D:/MNIST/raw_images_noise/validation/images/images_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), frames)
             np.save('D:/MNIST/data/validation/ampls/ampls_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), ampls)
@@ -968,8 +975,8 @@ if __name__ == '__main__':
 
         np.save('D:/MNIST/data/accuracy.npy', np.array(accs))
 
-        axs2.plot(accs, linestyle='-', marker='x', c='b')
-        axs3.plot(loss, linestyle='-', marker='', c='r')
+        axs5.plot(accs, linestyle='-', marker='x', c='b')
+        axs2.plot(loss, linestyle='-', marker='', c='r')
         plt.draw()
         plt.pause(0.001)
 

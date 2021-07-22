@@ -390,15 +390,15 @@ if __name__ == '__main__':
 
     Aref[ref_spot] = Aboth[ref_spot] - A0[ref_spot]
 
-    fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
-    axs1.set_ylim(0, 16)
-    axs1.plot(Aref, linestyle='', marker='o', c='orange')
-    axs1.plot(A0, linestyle='', marker='o', c='g')
-    axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
-    axs1.plot(Aboth, linestyle='', marker='x', c='r')
-    plt.draw()
-
-    plt.show()
+    # fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
+    # axs1.set_ylim(0, 16)
+    # axs1.plot(Aref, linestyle='', marker='o', c='orange')
+    # axs1.plot(A0, linestyle='', marker='o', c='g')
+    # axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
+    # axs1.plot(Aboth, linestyle='', marker='x', c='r')
+    # plt.draw()
+    #
+    # plt.show()
 
     np.save('./tools/Aref.npy', Aref)
 
@@ -413,9 +413,7 @@ if __name__ == '__main__':
     batch_size = 240
     num_frames = 10
 
-    w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
-    # w2 = np.load('D:/MNIST/data/best_w2_offline.npy')
-
+    w1 = np.random.normal(0, 0.5, (n, m-1))
     update_slm(w1, lut=True, ref=True)
     time.sleep(0.7)
 
@@ -477,8 +475,8 @@ if __name__ == '__main__':
     norm_params = np.array([curve_fit(line, all_theories[:, j], all_z1s[:, j])[0]
                             for j in range(m - 1)])
 
-    all_z1s -= norm_params[:, 1]
-    all_z1s /= norm_params[:, 0]
+    all_z1s -= norm_params[:, 1].copy()
+    all_z1s /= norm_params[:, 0].copy()
 
     print(norm_params)
 
@@ -497,146 +495,89 @@ if __name__ == '__main__':
 
     plt.show()
 
-    # breakpoint()
+    print('####################')
 
-    ###########
-    # TESTING #
-    ###########
+    for rm in range(1):
 
-    accs = []
-
-    for rep in range(5):
-
-        start_time = time.time()
-
-        # np.random.seed(321)
-        # sys_noise_arr = np.random.normal(0, 0.2, w1.shape)
-        # sys_noise_arr = np.random.normal(1., 0.5, w1.shape)
-
-        w1_noisy = w1.copy()
-        # w1_noisy += sys_noise_arr.copy()
-        w1_noisy += np.random.normal(0, 0.3, w1_noisy.shape)
-        # w1_noisy *= sys_noise_arr.copy()
-        update_slm(w1_noisy, lut=True, ref=True)
+        np.random.seed(rm*10)
+        w1 = np.random.normal(0, 0.5, (n, m - 1))
+        update_slm(w1, lut=True, ref=True)
         time.sleep(0.7)
 
-        test_z1s = np.full((5000, m - 1), np.nan)
+        all_z1s = []
+        all_theories = []
 
-        for test_batch_num in range(21):
+        target_frames = cp.zeros((16, 1080, 1920, 4), dtype=cp.uint8)
+        target_frames[..., -1] = 255
+        fc = target_frames.shape[0] - 1
+        cp_arr = target_frames[0]
+        frame_count = 0
+        for _ in range(5):
+            capture.frames = []
+            app.run(clock=dmd_clock, framerate=0, framecount=fc)
+            time.sleep(0.1)
 
-            print(test_batch_num)
+        for k in range(5):
 
-            if test_batch_num == 20:
-                vecs = testX_cp[4800 - 40:, :].copy()
-                vecs[:40, :] = 0
-            else:
-                vecs = testX_cp[test_batch_num * 240:(test_batch_num + 1) * 240, :].copy()
+            np.random.seed((rm * 10) + (k * 100) + 1000)
+            batch_indxs = np.random.randint(0, 5000, batch_size)
+            target_frames[4:-2, :, :, :-1] = make_dmd_batch(testX_cp[batch_indxs, :], 1, ref_block_val, batch_size,
+                                                            num_frames)
 
-            print(vecs.shape)
-
-            target_frames[4:-2, ..., :-1] = make_dmd_batch(vecs, 1, ref_block_val, batch_size, num_frames)
+            xs = testX[batch_indxs, :].copy()
 
             fc = target_frames.shape[0] - 1
             cp_arr = target_frames[0]
             frame_count = 0
 
             capture.frames = []
-
             app.run(clock=dmd_clock, framerate=0, framecount=fc)
-
             time.sleep(0.1)
 
-            frames = np.array(capture.frames.copy(), dtype=np.uint8)
+            frames = np.array(capture.frames.copy())
+
             ampls = find_spot_ampls(frames)
 
-            np.save('D:/MNIST/raw_images_noise/testing/images/images_batch_{}.npy'
-                    .format(test_batch_num), frames)
-            np.save('D:/MNIST/data/testing/ampls/ampls_rep_{}_batch_{}.npy'
-                    .format(rep, test_batch_num), ampls)
+            print(ampls.shape[0])
 
-            if test_batch_num == 20:
-                xs = testX[4800:, :].copy()
-            else:
-                xs = testX[test_batch_num * 240:(test_batch_num + 1) * 240, :].copy()
-
-            if ampls.shape[0] == batch_size:
-
-                meas = ampls.copy().reshape((num_frames, batch_size // num_frames, m))
-                diffs = np.abs(np.array([meas[k + 1, :, m // 3] - meas[k, :, m // 3]
-                                         for k in range(num_frames - 1)])).mean(axis=1)
-                diffs /= diffs.max()
-                repeats = (diffs < 0.25).sum() > 0
-
-                if repeats:
-                    print(colored('repeated frames, skipping', 'red'))
-
-            else:
-                print(colored('wrong num frames: {}'.format(ampls.shape[0]), 'red'))
-
-            if ampls.shape[0] == batch_size and not repeats:
-
+            if ampls.shape[0] == 240:
                 z1s = ampls - Aref
                 z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
                 z1s = np.delete(z1s, ref_spot, axis=1)
 
-                z1s -= norm_params[:, 1]
-                z1s /= norm_params[:, 0]
+                theories = np.dot(xs, w1)
 
-                if test_batch_num == 20:
-                    z1s = z1s[40:, :]
-                    test_z1s[4800:, :] = z1s.copy()
+                all_z1s.append(z1s)
+                all_theories.append(theories)
 
-                else:
-                    test_z1s[test_batch_num * 240:(test_batch_num + 1) * 240, :] = z1s.copy()
+        all_z1s = np.array(all_z1s)
+        all_z1s = all_z1s.reshape(all_z1s.shape[0] * 240, m - 1)
 
-                theories = np.dot(xs, w1.copy())
+        all_z1s -= norm_params[:, 1].copy()
+        all_z1s /= norm_params[:, 0].copy()
 
-            else:
-                if test_batch_num == 20:
-                    z1s = np.full((200, m - 1), np.nan)
-                    theories = np.full((200, m - 1), np.nan)
-                else:
-                    z1s = np.full((batch_size, m - 1), np.nan)
-                    theories = np.full((batch_size, m - 1), np.nan)
+        all_theories = np.array(all_theories)
+        all_theories = all_theories.reshape(all_theories.shape[0] * 240, m - 1)
 
-            np.save('D:/MNIST/data/testing/measured/measured_arr_rep_{}_batch_{}.npy'
-                    .format(rep, test_batch_num), z1s)
-            np.save('D:/MNIST/data/testing/theory/theory_arr_rep_{}_batch_{}.npy'
-                    .format(rep, test_batch_num), theories)
+        np.save('D:/VMM/data/all_z1s_rm_{}'.format(rm), all_z1s)
+        np.save('D:/VMM/data/all_theories_rm_{}'.format(rm), all_theories)
 
-        mask = ~np.isnan(test_z1s[:, 0])
-        test_z1s = test_z1s[mask]
-        xs = testX.copy()[mask]
-        ys = testY.copy()[mask]
+        fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
+        axs3.set_ylim(-10, 10)
+        axs3.plot([-10, 10], [-10, 10], c='black')
+        for j in range(m - 1):
+            axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
+        plt.draw()
 
-        # 1 layer
-        a1s = softmax(test_z1s*2)
-        pred = a1s.argmax(axis=1)
+        fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
+        axs4.set_ylim(-10, 10)
+        axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
+        axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
+        plt.draw()
 
-        # def relu(x):
-        #     return np.maximum(0, x)
-        #
-        # # 2 layer
-        # a1s = relu(test_z1s)
-        # z2s = np.dot(a1s, w2)
-        # a2s = softmax(z2s)
-        # pred = a2s.argmax(axis=1)
+        plt.show()
 
-        label = ys.argmax(axis=1)
-
-        acc = accuracy(pred, label)
-
-        accs.append(acc)
-
-        print(time.time() - start_time)
-
-        print('\n######################################################################')
-        print(colored('accuracy : {:.2f}'.format(acc), 'green'))
-        print('######################################################################\n')
-
-        print()
-
-    print(np.mean(np.array(accs)))
+        print(rm)
 
     camera.Close()
     # imageWindow.Close()
