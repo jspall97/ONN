@@ -20,7 +20,7 @@ class SLMframe(wx.Frame):
     def __init__(self, isImageLock=True):
         self.isImageLock = isImageLock
         # Create the frame
-        self._x0 = 0
+        self._x0 = -1920
         self._y0 = 0
         self._resX = 1920
         self._resY = 1080

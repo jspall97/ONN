@@ -247,3 +247,80 @@ class DNN_1d:
     #     z = np.dot(x, self.w1)
     #     self.feedforward(z)
     #     return self.a1.argmax(axis=1)
+
+
+class DNN_complex:
+    def __init__(self, *adam_args, x, y, w1_x_0, w1_y_0, batch_size, num_batches, lr=0.001, scaling=1.):
+        self.x = x
+        self.y = y
+        self.num_batches = num_batches
+        self.batch_size = batch_size
+        self.lr = lr
+        self.loss = []
+        self.scaling = scaling
+        ip_dim = self.x.shape[1]
+        op_dim = self.y.shape[1]
+
+        assert w1_x_0.shape == (ip_dim, op_dim)
+        self.w1_x = w1_x_0.copy()
+        self.w1_y = w1_y_0.copy()
+
+        # parameters for ADAM
+        self.m_dw_x_1, self.v_dw_x_1, self.m_dw_y_1, self.v_dw_y_1, self.beta1, self.beta2 = adam_args
+        self.epsilon = 1e-8
+        self.t = 1
+
+    def feedforward(self, z1):
+
+        self.z1_x = np.real(z1)
+        self.z1_y = np.imag(z1)
+
+        self.a1_x = self.z1_x ** 2
+        self.a1_y = self.z1_y ** 2
+
+        self.z2 = self.a1_x + self.a1_y
+
+        self.a2 = softmax(self.z2 * self.scaling)
+
+    def adam_update(self, dw_x, dw_y, m_dw_x, v_dw_x, m_dw_y, v_dw_y):
+        t = self.t
+
+        m_dw_x = self.beta1 * m_dw_x + (1 - self.beta1) * dw_x
+        v_dw_x = self.beta2 * v_dw_x + (1 - self.beta2) * (dw_x ** 2)
+
+        m_dw_y = self.beta1 * m_dw_y + (1 - self.beta1) * dw_y
+        v_dw_y = self.beta2 * v_dw_y + (1 - self.beta2) * (dw_y ** 2)
+
+        m_dw_x_corr = m_dw_x / (1 - self.beta1 ** t)
+        v_dw_x_corr = v_dw_x / (1 - self.beta2 ** t)
+
+        m_dw_y_corr = m_dw_y / (1 - self.beta1 ** t)
+        v_dw_y_corr = v_dw_y / (1 - self.beta2 ** t)
+
+        adam_dw_x = self.lr * (m_dw_x_corr / (np.sqrt(v_dw_x_corr) + self.epsilon))
+        adam_dw_y = self.lr * (m_dw_y_corr / (np.sqrt(v_dw_y_corr) + self.epsilon))
+
+        return adam_dw_x, m_dw_x, v_dw_x, adam_dw_y, m_dw_y, v_dw_y
+
+    def backprop(self, xs, ys):
+        self.loss = error(self.a2, ys)
+
+        a2_delta = (self.a2 - ys) / self.batch_size
+
+        a1_delta_x = a2_delta * 2 * self.z1_x
+        a1_delta_y = a2_delta * 2 * self.z1_y
+
+        dw_x_1 = np.dot(xs.T, a1_delta_x)
+        dw_y_1 = np.dot(xs.T, a1_delta_y)
+
+        adam_dw_x_1, self.m_dw_x_1, self.v_dw_x_1, adam_dw_y_1, self.m_dw_y_1, self.v_dw_y_1 = self.adam_update(dw_x_1,
+                                                                                                                dw_y_1,
+                                                                                                                self.m_dw_x_1,
+                                                                                                                self.v_dw_x_1,
+                                                                                                                self.m_dw_y_1,
+                                                                                                                self.v_dw_y_1)
+
+        self.w1_x -= adam_dw_x_1
+        self.w1_y -= adam_dw_y_1
+
+        self.t += 1

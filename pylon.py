@@ -16,31 +16,31 @@ m = int(dims[1])
 # half_height = area_height // 2
 
 
-def find_spot_ampls(arr):
-    def spot_s_200(i):
-        y_center_i = y_center_indxs[i]
-        return np.s_[x_edge_indxs[2 * i]:x_edge_indxs[2 * i + 1],
-               y_center_i - half_height:y_center_i + half_height + 1]
-
-    spots_dict = {}
-
-    for spot_num in range(m):
-        spot = arr.T[spot_s_200(spot_num)]
-
-        mask = spot < 3
-        spot -= 2
-        spot[mask] = 0
-
-        spots_dict[spot_num] = spot
-
-    spot_powers = np.array([spots_dict[i].mean() for i in range(m)])
-
-    spot_ampls = np.sqrt(spot_powers)
-
-    spot_ampls = np.flip(spot_ampls)
-
-    return np.array(spot_ampls)
+# def find_spot_ampls(arr):
+#     def spot_s_200(i):
+#         y_center_i = y_center_indxs[i]
+#         return np.s_[x_edge_indxs[2 * i]:x_edge_indxs[2 * i + 1],
+#                y_center_i - half_height:y_center_i + half_height + 1]
 #
+#     spots_dict = {}
+#
+#     for spot_num in range(m):
+#         spot = arr.T[spot_s_200(spot_num)]
+#
+#         mask = spot < 3
+#         spot -= 2
+#         spot[mask] = 0
+#
+#         spots_dict[spot_num] = spot
+#
+#     spot_powers = np.array([spots_dict[i].mean() for i in range(m)])
+#
+#     spot_ampls = np.sqrt(spot_powers)
+#
+#     spot_ampls = np.flip(spot_ampls)
+#
+#     return np.array(spot_ampls)
+# #
 #
 def run_camera(conn, action='init'):
 

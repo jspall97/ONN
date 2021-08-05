@@ -16,6 +16,7 @@ from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from glumpy.app import clock
 
 
 def keyboardinterrupthandler(signal, frame):
@@ -44,7 +45,7 @@ def run_frames(frames, fr=0, fc=None):
     cp_arr = target_frames[0]
     frame_count = 0
 
-    app.run(framerate=fr, framecount=fc)
+    app.run(clock=dmd_clock, framerate=fr, framecount=fc)
 
     print('dmd finished batch {}'.format(batch_num))
 
@@ -103,7 +104,7 @@ if __name__ == '__main__':
     backend = app.use('glfw')
 
     window = app.Window(1920, 1080, fullscreen=0, decoration=0)
-    window.set_position(-1920, 0)
+    window.set_position(-2*1920, 0)
     window.activate()
     window.show()
 
@@ -118,20 +119,22 @@ if __name__ == '__main__':
 
     batch_num = 0
 
+    dmd_clock = clock.Clock()
+
     # ####################
     # # PHASE CALIB #
     # ####################
 
     n = 96
-    m = 25
+    m = 40
     batch_size = 96
     num_frames = 4
-    ref_block_val = 0.2
+    ref_block_val = 1.
     ref_block_phase = 0.
     dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
 
     ones = np.full((n, m), 1.)
-    update_slm(ones, ref=1, ref_val=0.)
+    update_slm(ones, ref=0, ref_val=0.)
 
     dmd_col = np.zeros((n, m))
     dmd_col[55, :] = 1.
@@ -149,8 +152,8 @@ if __name__ == '__main__':
 
     dmd_cols = cp.eye(n)
 
-    dmd_rgbs = cp.zeros((num_frames+4, 1080, 1920, 4), dtype=cp.uint8)
-    dmd_rgbs[2:-2, :, :, :-1] = make_dmd_batch(dmd_cols, 0, ref_block_val, batch_size, num_frames)
+    dmd_rgbs = cp.zeros((num_frames+6, 1080, 1920, 4), dtype=cp.uint8)
+    dmd_rgbs[3:-3, :, :, :-1] = make_dmd_batch(dmd_cols, 0, ref_block_val, batch_size, num_frames)
     dmd_rgbs[..., -1] = 255
 
     phases = np.linspace(0, 2*np.pi, 64)
@@ -158,7 +161,7 @@ if __name__ == '__main__':
     # warmup
     for _ in range(5):
 
-        conn1.send((2, 400))
+        conn1.send((2, 300))
 
         run_frames(frames=dmd_rgbs)
 
@@ -170,9 +173,9 @@ if __name__ == '__main__':
 
         ref_block_phase = p
         dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-        update_slm(ones)
+        update_slm(ones, ref=0)
 
-        conn1.send((2+indx, 400))
+        conn1.send((2+indx, 300))
 
         run_frames(frames=dmd_rgbs)
 

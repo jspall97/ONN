@@ -75,8 +75,10 @@ step = 0.00001
 inv_sinc_LUT = np.load("./tools/inv_sinc_lut.npy")
 gpu_inv_sinc_LUT = cp.asarray(inv_sinc_LUT, dtype='float32')
 
+ref_block_norm = np.load('./tools/ref_block_norm.npy')
 
-def update_params(ref_block_val, batch_size, num_frames):
+
+def update_params(ref_block_ampl, batch_size, num_frames, is_complex=False):
 
     global slm_w, slm_sig_w, slm_ref_w, slm_h, ref_spot
     global cols_to_del, rows_to_del, slm_block_w, slm_block_h
@@ -87,8 +89,9 @@ def update_params(ref_block_val, batch_size, num_frames):
     global y_blocks, y_blocks_multi, y_blocks_multi_cp
     global ampl_ref_sindx, ampl_ref_eindx, ampl_ref_s, bit_values, bit_values_extended
     global o, u, e
+    global ref_ampl_block, ref_phase_block, ref_block_norm
 
-    if ref_block_val is not None:
+    if ref_block_ampl is not None:
         slm_w_local = slm_sig_w
     else:
         slm_w_local = slm_w
@@ -102,7 +105,7 @@ def update_params(ref_block_val, batch_size, num_frames):
     # some magic to figure out where to place ref block in between blocks, so it doesnt split a block in half
     insert_indx = slm_block_w * (n // 2) - (cols_to_del < slm_block_w * (n // 2)).sum()
 
-    if ref_block_val is None:
+    if ref_block_ampl is None:
         slm_edges_x = np.linspace(0, slm_w, n + 1)
         slm_centers_x = np.array([(slm_edges_x[i] + slm_edges_x[i + 1]) / 2 for i in range(n)]).astype(int)
 
@@ -121,7 +124,7 @@ def update_params(ref_block_val, batch_size, num_frames):
     # slm_centers_x_grid, slm_centers_y_grid = np.meshgrid(slm_centers_x, slm_centers_y)
 
     dmd_block_w = int((slm_block_w - 1) * dmd_w / slm_w)
-    dmd_block_h = int((slm_block_h - 1) * 0.5 * dmd_h / slm_h)
+    dmd_block_h = int((slm_block_h - 1) * 0.9 * dmd_h / slm_h)
 
     if dmd_block_h % 2 == 0:
         dmd_block_h -= 1
@@ -163,6 +166,21 @@ def update_params(ref_block_val, batch_size, num_frames):
     u = dmd_h
     e = batch_size
 
+    if is_complex:
+
+        ref_phase_block = np.array([0, np.pi / 2, np.pi, -np.pi / 2])[None, :].repeat(slm_ref_w, axis=0)
+        ref_phase_block = np.tile(ref_phase_block, 10)
+        ref_phase_block = np.repeat(ref_phase_block, int(np.ceil(slm_h / m)), axis=1)
+        block_col_dels = np.linspace(0, slm_h, ref_phase_block.shape[1] - slm_h).astype(np.int)
+        ref_phase_block = np.delete(ref_phase_block, block_col_dels, axis=1)
+
+        ref_ampl_block = ref_block_norm.copy()
+
+    else:
+        if ref_block_ampl is not None:
+            ref_phase_block = np.zeros((slm_ref_w, slm_h))
+            ref_ampl_block = np.ones((slm_ref_w, slm_h)) * ref_block_ampl
+
     return dmd_block_w
 
 
@@ -182,10 +200,11 @@ def update_params(ref_block_val, batch_size, num_frames):
 #     return slm_image
 
 
-def make_slm_rgb(target, ref_block_val, ref_block_phase=0.):
+def make_slm_rgb(target, ref_block_ampl):
 
     global slm_w, slm_sig_w, slm_ref_w, slm_h
     global cols_to_del, rows_to_del, slm_block_w, slm_block_h
+    global ref_ampl_block, ref_phase_block
 
     target = np.flip(target, axis=1)
 
@@ -197,9 +216,9 @@ def make_slm_rgb(target, ref_block_val, ref_block_phase=0.):
     A_aoi = np.abs(aoi)
     phi_aoi = np.angle(aoi)
 
-    if ref_block_val is not None:
-        A_aoi = np.insert(A_aoi, insert_indx, np.ones((slm_ref_w, A_aoi.shape[1])) * ref_block_val, 0)
-        phi_aoi = np.insert(phi_aoi, insert_indx, np.ones((slm_ref_w, phi_aoi.shape[1])) * ref_block_phase, 0)
+    if ref_block_ampl is not None:
+        A_aoi = np.insert(A_aoi, insert_indx, ref_ampl_block, 0)
+        phi_aoi = np.insert(phi_aoi, insert_indx, ref_phase_block, 0)
 
     gpu_A_aoi = cp.array(A_aoi)
     gpu_phi_aoi = cp.array(phi_aoi) + gpu_slm_wf
