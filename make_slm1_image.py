@@ -213,8 +213,8 @@ def make_slm_rgb(target, ref_block_ampl):
     aoi = np.delete(aoi, cols_to_del, 0)
     aoi = np.delete(aoi, rows_to_del, 1)
 
-    A_aoi = np.abs(aoi)
-    phi_aoi = np.angle(aoi)
+    A_aoi = np.abs(aoi.copy())
+    phi_aoi = np.angle(aoi.copy())
 
     if ref_block_ampl is not None:
         A_aoi = np.insert(A_aoi, insert_indx, ref_ampl_block, 0)

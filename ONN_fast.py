@@ -119,7 +119,8 @@ signal.signal(signal.SIGINT, keyboardinterrupthandler)
 
 complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
 
-def update_slm(arr, lut=False, ref=False):
+
+def update_slm(arr, lut=False, ref=False, noise_arr_A=None, noise_arr_phi=None):
 
     global ampl_norm_val, ref_spot
 
@@ -139,12 +140,20 @@ def update_slm(arr, lut=False, ref=False):
         arr_A = cp.linspace(0, 1, 128)[map_indx]
 
     else:
-        arr_A = cp.asarray(arr.copy())
+        arr_A = cp.abs(cp.asarray(arr.copy()))
 
     if ref:
         arr_A[:, ref_spot] = ampl_norm_val
 
-    arr_out = arr_A * cp.exp(1j*cp.angle(cp.array(arr.copy())))
+    arr_phi = cp.angle(cp.array(arr.copy()))
+
+    if noise_arr_A is not None:
+        arr_A += cp.array(noise_arr_A)
+
+    if noise_arr_phi is not None:
+        arr_phi += cp.array(noise_arr_phi)
+
+    arr_out = arr_A * cp.exp(1j*arr_phi)
 
     arr_out = np.flip(arr_out.get(), axis=1)
     img = make_slm_rgb(arr_out, ref_block_val)
@@ -740,8 +749,9 @@ if __name__ == '__main__':
                 I1 = Iall[:, 1::4].copy()
                 I2 = Iall[:, 2::4].copy()
                 I3 = Iall[:, 3::4].copy()
-                Xmeas = (I0 - I2) / 19
-                Ymeas = (I1 - I3) / 19
+                scale_guess = 16
+                Xmeas = (I0 - I2) / scale_guess
+                Ymeas = (I1 - I3) / scale_guess
 
                 z1s = Xmeas + (1j * Ymeas)
 
@@ -787,9 +797,11 @@ if __name__ == '__main__':
         # update_slm(w1_noisy, lut=True, ref=True)
         # time.sleep(1)
 
+        ampl_noise = np.random.normal(0, 0.3, (n, m))
+
         w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
         # CHECK REFERENCE IS ON/OFF
-        update_slm(w1_z, lut=True, ref=False)
+        update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
         time.sleep(1)
 
         ##########################
@@ -857,8 +869,8 @@ if __name__ == '__main__':
                 I1 = Iall[:, 1::4].copy()
                 I2 = Iall[:, 2::4].copy()
                 I3 = Iall[:, 3::4].copy()
-                Xmeas = (I0 - I2) / 19
-                Ymeas = (I1 - I3) / 19
+                Xmeas = (I0 - I2) / scale_guess
+                Ymeas = (I1 - I3) / scale_guess
 
                 z1s = Xmeas + (1j * Ymeas)
 
@@ -899,9 +911,11 @@ if __name__ == '__main__':
                 # update_slm(w1_noisy, lut=True, ref=True)
                 # time.sleep(0.7)
 
+                ampl_noise = np.random.normal(0, 0.3, (n, m))
+
                 w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
                 # CHECK REFERENCE IS ON/OFF
-                update_slm(w1_z, lut=True, ref=False)
+                update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
 
 
                 if dnn.loss < loss[-1]:
@@ -996,23 +1010,21 @@ if __name__ == '__main__':
         # update_slm(w1_noisy, lut=True, ref=True)
         # time.sleep(0.7)
 
+        ampl_noise = np.random.normal(0, 0.3, (n, m))
+
         w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
         # CHECK REFERENCE IS ON/OFF
-        update_slm(w1_z, lut=True, ref=False)
+        update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
         time.sleep(1)
 
-        # val_z1s = np.full((5000, m-1), np.nan)
-        val_z1s = np.full((5000, 10), np.nan+(1j*np.nan))
+        # val_z1s = np.full((4800, m-1), np.nan)
+        val_z1s = np.full((4800, 10), np.nan+(1j*np.nan))
 
-        for val_batch_num in range(21):
+        for val_batch_num in range(20):
 
             print(val_batch_num)
 
-            if val_batch_num == 20:
-                vecs = valX_cp[4800-40:, :].copy()
-                vecs[40:, :] = 0
-            else:
-                vecs = valX_cp[val_batch_num * 240:(val_batch_num + 1) * 240, :].copy()
+            vecs = valX_cp[val_batch_num * 240:(val_batch_num + 1) * 240, :].copy()
 
             # CHECK REFERENCE IS ON/OFF
             target_frames[2:-2, ..., :-1] = make_dmd_batch(vecs, 0, ref_block_val, batch_size, num_frames)
@@ -1035,10 +1047,7 @@ if __name__ == '__main__':
             np.save('D:/MNIST/data/validation/ampls/ampls_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), ampls)
 
-            if val_batch_num == 20:
-                xs = valX[4800:, :].copy()
-            else:
-                xs = valX[val_batch_num * 240:(val_batch_num + 1) * 240, :].copy()
+            xs = valX[val_batch_num * 240:(val_batch_num + 1) * 240, :].copy()
 
             if ampls.shape[0] == batch_size:
 
@@ -1064,8 +1073,8 @@ if __name__ == '__main__':
                 I1 = Iall[:, 1::4].copy()
                 I2 = Iall[:, 2::4].copy()
                 I3 = Iall[:, 3::4].copy()
-                Xmeas = (I0 - I2) / 19
-                Ymeas = (I1 - I3) / 19
+                Xmeas = (I0 - I2) / scale_guess
+                Ymeas = (I1 - I3) / scale_guess
 
                 z1s = Xmeas + (1j * Ymeas)
 
@@ -1073,22 +1082,14 @@ if __name__ == '__main__':
                 Zimags = (np.imag(z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
                 z1s = Zreals + (1j * Zimags)
 
-                if val_batch_num == 20:
-                    z1s = z1s[40:, :]
-                    val_z1s[4800:, :] = z1s.copy()
-                else:
-                    val_z1s[val_batch_num * 240:(val_batch_num + 1) * 240, :] = z1s.copy()
+                val_z1s[val_batch_num * 240:(val_batch_num + 1) * 240, :] = z1s.copy()
 
                 # theories = np.dot(xs, dnn.w1.copy())
                 theories = np.dot(xs, w1_z.copy())
 
             else:
-                if val_batch_num == 20:
-                    z1s = np.full((200, 10), np.nan+(1j*np.nan))  # m - 1
-                    theories = np.full((200, 10), np.nan+(1j*np.nan))  # m - 1
-                else:
-                    z1s = np.full((batch_size, 10), np.nan+(1j*np.nan))  # m - 1
-                    theories = np.full((batch_size, 10), np.nan+(1j*np.nan))  # m - 1
+                z1s = np.full((batch_size, 10), np.nan+(1j*np.nan))  # m - 1
+                theories = np.full((batch_size, 10), np.nan+(1j*np.nan))  # m - 1
 
             np.save('D:/MNIST/data/validation/measured/measured_arr_epoch_{}_batch_{}.npy'
                     .format(epoch_num, val_batch_num), z1s)
@@ -1097,8 +1098,8 @@ if __name__ == '__main__':
 
         mask = ~np.isnan(np.real(val_z1s)[:, 0])
         val_z1s = val_z1s[mask]
-        xs = valX.copy()[mask]
-        ys = valY.copy()[mask]
+        # xs = valX[:4800].copy()[mask]
+        ys = valY[:4800].copy()[mask]
 
         dnn.feedforward(val_z1s)
 
