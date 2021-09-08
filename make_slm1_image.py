@@ -174,7 +174,7 @@ def update_params(ref_block_ampl, batch_size, num_frames, is_complex=False):
         block_col_dels = np.linspace(0, slm_h, ref_phase_block.shape[1] - slm_h).astype(np.int)
         ref_phase_block = np.delete(ref_phase_block, block_col_dels, axis=1)
 
-        ref_ampl_block = ref_block_norm.copy()
+        ref_ampl_block = ref_block_norm.copy() * ref_block_ampl
 
     else:
         if ref_block_ampl is not None:

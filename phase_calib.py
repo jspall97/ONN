@@ -54,7 +54,7 @@ def update_slm(arrA, ref=1, ref_val=0.2):
     global ref_block_val, ref_block_phase
     if ref:
         arrA[:, m//2] = ref_val
-    img = make_slm_rgb(arrA, ref_block_val, ref_block_phase)
+    img = make_slm_rgb(arrA, ref_block_val)
     slm.updateArray(img)
     time.sleep(0.7)
 
@@ -87,6 +87,9 @@ def init_cam_dmd_scan():
     conn1.send((0, 100))
     run_frames(frames=null_frames)  # init frames, "batch" 0
     wait_for_sig(conn1)
+
+
+ref_block_norm = np.load('./tools/ref_block_norm.npy')
 
 
 if __name__ == '__main__':
@@ -125,13 +128,13 @@ if __name__ == '__main__':
     # # PHASE CALIB #
     # ####################
 
-    n = 96
+    n = 100
     m = 40
-    batch_size = 96
-    num_frames = 4
-    ref_block_val = 1.
+    batch_size = 120
+    num_frames = 5
+    ref_block_val = 0.1
     ref_block_phase = 0.
-    dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
+    dmd_block_w = update_params(ref_block_val, batch_size, num_frames, is_complex=True)
 
     ones = np.full((n, m), 1.)
     update_slm(ones, ref=0, ref_val=0.)
@@ -150,7 +153,9 @@ if __name__ == '__main__':
 
     # dmd_cols = [cp.load('./tools/dmd_imgs/two_cols/col_array_{}.npy'.format(i)) for i in range(5)]
 
-    dmd_cols = cp.eye(n)
+    dmd_cols = np.eye(120)
+    dmd_cols = np.delete(dmd_cols, np.arange(100, 120), 1)
+    dmd_cols = cp.array(dmd_cols)
 
     dmd_rgbs = cp.zeros((num_frames+6, 1080, 1920, 4), dtype=cp.uint8)
     dmd_rgbs[3:-3, :, :, :-1] = make_dmd_batch(dmd_cols, 0, ref_block_val, batch_size, num_frames)
@@ -167,13 +172,32 @@ if __name__ == '__main__':
 
         wait_for_sig(conn1)
 
+    # for indx, p in enumerate(phases):
+    #
+    #     print(indx)
+    #
+    #     ref_block_phase = p
+    #     dmd_block_w = update_params(ref_block_val, batch_size, num_frames, is_complex=True)
+    #     update_slm(ones, ref=0)
+    #
+    #     conn1.send((2+indx, 300))
+    #
+    #     run_frames(frames=dmd_rgbs)
+    #
+    #     wait_for_sig(conn1)
+    #
+    # conn1.send((1, 0))  # stop camera
+
+    ####################
+    # COMPLEX CALIB #
+    ####################
+
     for indx, p in enumerate(phases):
 
         print(indx)
 
-        ref_block_phase = p
-        dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-        update_slm(ones, ref=0)
+        slm_arr = np.exp(1j*np.ones((n, m))*p)
+        update_slm(slm_arr, ref=0)
 
         conn1.send((2+indx, 300))
 

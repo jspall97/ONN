@@ -36,7 +36,7 @@ m = int(dims[1])
 
 ref_spot = m//2
 
-ref_block_val = 1.
+ref_block_val = 0.3
 batch_size = 240
 num_batches = 5
 num_frames = 10
@@ -241,7 +241,7 @@ def find_spot_ampls(arrs):
     arrs[mask] = 0
 
     def spot_s(i):
-        return np.s_[:, y_centers[i] - 3:y_centers[i] + 4, x_edge_indxs[2 * i]:x_edge_indxs[2 * i + 1]]
+        return np.s_[:, y_centers[i] - 2:y_centers[i] + 3, x_edge_indxs[2 * i]:x_edge_indxs[2 * i + 1]]
 
     spot_powers = cp.array([arrs[spot_s(i)].mean(axis=(1, 2)) for i in range(m + 1)])
 
@@ -448,6 +448,8 @@ if __name__ == '__main__':
     ampl_norm_val = 0.1
     # Aref = np.load('./tools/Aref.npy')
 
+    scale_guess = 10
+
     batch_size = 240
     num_frames = 10
 
@@ -523,8 +525,8 @@ if __name__ == '__main__':
             I1 = Iall[:, 1::4].copy()
             I2 = Iall[:, 2::4].copy()
             I3 = Iall[:, 3::4].copy()
-            Xmeas = (I0 - I2) / 19
-            Ymeas = (I1 - I3) / 19
+            Xmeas = (I0 - I2) / scale_guess
+            Ymeas = (I1 - I3) / scale_guess
 
             z1s = Xmeas + (1j*Ymeas)
 
@@ -749,7 +751,6 @@ if __name__ == '__main__':
                 I1 = Iall[:, 1::4].copy()
                 I2 = Iall[:, 2::4].copy()
                 I3 = Iall[:, 3::4].copy()
-                scale_guess = 16
                 Xmeas = (I0 - I2) / scale_guess
                 Ymeas = (I1 - I3) / scale_guess
 
@@ -801,7 +802,7 @@ if __name__ == '__main__':
 
         w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
         # CHECK REFERENCE IS ON/OFF
-        update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
+        update_slm(w1_z, lut=True, ref=False, noise_arr_A=None, noise_arr_phi=None)
         time.sleep(1)
 
         ##########################
@@ -915,7 +916,7 @@ if __name__ == '__main__':
 
                 w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
                 # CHECK REFERENCE IS ON/OFF
-                update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
+                update_slm(w1_z, lut=True, ref=False, noise_arr_A=None, noise_arr_phi=None)
 
 
                 if dnn.loss < loss[-1]:
@@ -1014,7 +1015,7 @@ if __name__ == '__main__':
 
         w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
         # CHECK REFERENCE IS ON/OFF
-        update_slm(w1_z, lut=True, ref=False, noise_arr_A=ampl_noise, noise_arr_phi=None)
+        update_slm(w1_z, lut=True, ref=False, noise_arr_A=None, noise_arr_phi=None)
         time.sleep(1)
 
         # val_z1s = np.full((4800, m-1), np.nan)

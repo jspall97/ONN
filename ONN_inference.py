@@ -36,7 +36,7 @@ m = int(dims[1])
 
 ref_spot = m//2
 
-ref_block_val = 1.
+ref_block_val = 0.
 batch_size = 240
 num_batches = 5
 num_frames = 10
@@ -165,67 +165,6 @@ def dmd_one_frame(arr, ref):
     img = make_dmd_image(arr, ref=ref, ref_block_val=ref_block_val)
     return [img]
 
-
-# recomb_params = (35, 605, 69, np.array([579, 631]), np.array([44, 95]), 103)
-# y_center, mid0, mid1, ref_indxs_0, ref_indxs_1, ref_width = recomb_params
-#
-#
-# def recombine(arr):
-#     frame0 = arr[:, :arr.shape[1] // 2].copy()
-#     frame1 = arr[:, arr.shape[1] // 2:].copy()
-#
-#     frame1 = np.flip(frame1, axis=1)
-#
-#     cross0 = frame0[mid0 - (ref_width // 5):mid0 + (ref_width // 5), :].mean(axis=0)
-#     cross1 = frame1[mid1 - (ref_width // 5):mid1 + (ref_width // 5), :].mean(axis=0)
-#     #
-#     # y_center0 = (cross0 * np.arange(cross0.shape[0])).sum() / cross0.sum()
-#     # y_center1 = (cross1 * np.arange(cross1.shape[0])).sum() / cross1.sum()
-#     # y_center0 = int(np.round(y_center0, 0))
-#     # y_center1 = int(np.round(y_center1, 0))
-#
-#     # if arr.max() > 100:
-#     #
-#     #     cross0_bool = (cross0 > cross0.max() * 0.2)
-#     #     s0 = cross0_bool.argmax()
-#     #     e0 = 70 - np.flip(cross0_bool.copy()).argmax()
-#     #     y_center0 = (e0 + s0) / 2
-#     #
-#     #     cross1_bool = (cross1 > cross1.max() * 0.2)
-#     #     s1 = cross1_bool.argmax()
-#     #     e1 = 70 - np.flip(cross1_bool.copy()).argmax()
-#     #     y_center1 = (e1 + s1) / 2
-#     #
-#     #     y_center0 = int(np.round(y_center0, 0))
-#     #     y_center1 = int(np.round(y_center1, 0))
-#     #
-#     # else:
-#     #
-#     #     y_center0 = cross0.argmax()
-#     #     y_center1 = cross1.argmax()
-#
-#     bright_ratio = cross1.mean() / cross0.mean()
-#     frame0 = frame0 * bright_ratio
-#
-#     # y_delta_0 = y_center0 - y_center
-#     # y_delta_1 = y_center1 - y_center
-#
-#     y_delta_0 = 7
-#     y_delta_1 = 0
-#
-#     edge_cut = np.maximum(np.abs(y_delta_0), np.abs(y_delta_1))
-#
-#     frame0 = np.roll(frame0, -y_delta_0, axis=1)
-#     frame1 = np.roll(frame1, -y_delta_1, axis=1)
-#
-#     frame0 = frame0[:ref_indxs_0[1], :]
-#     frame1 = frame1[ref_indxs_1[0]:, :]
-#     frame_both = np.concatenate((frame0, frame1))
-#
-#     frame_both[:, :edge_cut] = 0
-#     frame_both[:, -edge_cut:] = 0
-#
-#     return frame_both
 
 x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
 y_centers = np.load('./tools/y_centers_list.npy')
@@ -360,90 +299,13 @@ if __name__ == '__main__':
     camera.StartGrabbing(pylon.GrabStrategy_OneByOne, pylon.GrabLoop_ProvidedByInstantCamera)
     time.sleep(1)
 
-    #####################
-    # find norm values #
-    #####################
-
-    # ampl_norm_val = 0.1
-    #
-    # k = np.abs(np.linspace(-1, 1, 256) - ampl_norm_val).argmin()
-    # slm_arr = actual_uppers_arr_256[k, ...].copy()
-    #
-    # ### Aref ###################
-    #
-    # ref_block_val = 1.
-    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    # update_slm(slm_arr, lut=True, ref=True)
-    # dmd_arr = np.zeros((n, m))
-    # target_frames = dmd_one_frame(dmd_arr, ref=1)
-    # cp_arr = target_frames[0]
-    # frame_count = 0
-    #
-    # app.__init__(clock=dmd_clock, framerate=0, backend=backend)
-    #
-    # app.run(clock=dmd_clock, framerate=0, framecount=1)
-    # capture.frames = []
-    # capture.timestamps = []
-    # time.sleep(2)
-    # frs = np.array(capture.frames[-1000:])
-    # print(frs.shape)
-    # np.save('./tools/temp_ref.npy', frs)
-    # Aref = find_spot_ampls(frs).mean(axis=0)
-    # capture.frames = []
-    # capture.timestamps = []
-    #
-    # ### A0 ###################
-    #
-    # ref_block_val = 0.
-    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    # update_slm(slm_arr, lut=True, ref=True)
-    # dmd_arr = np.ones((n, m))
-    # target_frames = dmd_one_frame(dmd_arr, ref=1)
-    # cp_arr = target_frames[0]
-    # frame_count = 0
-    # app.run(clock=dmd_clock, framerate=0, framecount=1)
-    # time.sleep(2)
-    # frs = np.array(capture.frames[-1000:])
-    # np.save('./tools/temp_0.npy', frs)
-    # A0 = find_spot_ampls(frs).mean(axis=0)
-    # capture.frames = []
-    # capture.timestamps = []
-    #
-    # ### Aboth ###################
-    #
-    # ref_block_val = 1.
-    # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
-    # update_slm(slm_arr, lut=True, ref=True)
-    # dmd_arr = np.ones((n, m))
-    # target_frames = dmd_one_frame(dmd_arr, ref=1)
-    # cp_arr = target_frames[0]
-    # frame_count = 0
-    # app.run(clock=dmd_clock, framerate=0, framecount=1)
-    # time.sleep(2)
-    # frs = np.array(capture.frames[-1000:])
-    # np.save('./tools/temp_both.npy', frs)
-    # Aboth = find_spot_ampls(frs).mean(axis=0)
-    # capture.frames = []
-    # capture.timestamps = []
-    #
-    # Aref[ref_spot] = Aboth[ref_spot] - A0[ref_spot]
-    #
-    # fig1, axs1 = plt.subplots(1, 1, figsize=(8, 4))
-    # axs1.set_ylim(0, 16)
-    # axs1.plot(Aref, linestyle='', marker='o', c='orange')
-    # axs1.plot(A0, linestyle='', marker='o', c='g')
-    # axs1.plot(A0 + Aref, linestyle='', marker='o', c='b')
-    # axs1.plot(Aboth, linestyle='', marker='x', c='r')
-    # plt.draw()
-    #
-    # plt.show()
-    #
-    # np.save('./tools/Aref.npy', Aref)
 
     ######################################
 
     # Aref = np.load('./tools/Aref.npy')
     ampl_norm_val = 0.05
+
+    scale_guess = 0.21
 
     # ref_block_val = 0.
     # dmd_block_w = update_params(ref_block_val, batch_size, num_frames)
@@ -454,8 +316,11 @@ if __name__ == '__main__':
     # w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
     # w2 = np.load('D:/MNIST/data/best_w2_offline.npy')
 
-    w1_x = np.load('D:/MNIST/data/best_w1_x.npy')
-    w1_y = np.load('D:/MNIST/data/best_w1_y.npy')
+    # w1_x = np.load('D:/MNIST/data/best_w1_x.npy')
+    # w1_y = np.load('D:/MNIST/data/best_w1_y.npy')
+
+    w1_x = np.load('D:/MNIST/data/best_w1_x_offline.npy')
+    w1_y = np.load('D:/MNIST/data/best_w1_y_offline.npy')
 
     w1_z = w1_x.copy() + (1j * w1_y.copy())
 
@@ -503,6 +368,8 @@ if __name__ == '__main__':
             print(frames.shape)
 
             ampls = find_spot_ampls(frames)
+
+
             if ampls.shape[0] == 240:
 
                 print(ampls.shape)
@@ -513,34 +380,31 @@ if __name__ == '__main__':
                 #
                 # theories = np.dot(xs, w1)
 
-                scale_guess = 10
+                # Iall = ampls.copy() ** 2
+                # I0 = Iall[:, 0::4].copy()
+                # I1 = Iall[:, 1::4].copy()
+                # I2 = Iall[:, 2::4].copy()
+                # I3 = Iall[:, 3::4].copy()
+                # Xmeas = (I0 - I2) / scale_guess
+                # Ymeas = (I1 - I3) / scale_guess
+                #
+                # z1s = Xmeas + (1j * Ymeas)
+                #
+                # theories = np.dot(xs, w1_z.copy())
+                #
+                # all_z1s.append(z1s)
+                # all_theories.append(theories)
 
-                Iall = ampls.copy() ** 2
-                I0 = Iall[:, 0::4].copy()
-                I1 = Iall[:, 1::4].copy()
-                I2 = Iall[:, 2::4].copy()
-                I3 = Iall[:, 3::4].copy()
-                Xmeas = (I0 - I2) / scale_guess
-                Ymeas = (I1 - I3) / scale_guess
-
-                z1s = Xmeas + (1j * Ymeas)
+                Imeas = ampls.copy() ** 2
+                Imeas = Imeas.reshape(240, 10, 4).mean(axis=-1)
+                Imeas *= scale_guess
+                z1s = Imeas.copy()
 
                 theories = np.dot(xs, w1_z.copy())
+                theories = np.abs(theories) ** 2
 
                 all_z1s.append(z1s)
                 all_theories.append(theories)
-
-                # scale_guess = 0.2
-                # Imeas = ampls.copy() ** 2
-                # Imeas = np.delete(Imeas, ref_spot, axis=1)
-                # Imeas *= scale_guess
-                #
-                # Itheory = np.dot(xs, w1_z.copy())
-                # Itheory = np.delete(Itheory, ref_spot, axis=1)
-                # Itheory = np.abs(Itheory)**2
-                #
-                # all_z1s.append(Imeas)
-                # all_theories.append(Itheory)
 
         all_theories = np.array(all_theories)
         all_z1s = np.array(all_z1s)
@@ -558,56 +422,56 @@ if __name__ == '__main__':
         def line(x, grad, c):
             return (grad * x) + c
         #
-        # norm_params = np.array([curve_fit(line, all_theories[:, j], all_z1s[:, j])[0]
-        #                         for j in range(10)]) # m - 1
+        norm_params = np.array([curve_fit(line, all_theories[:, j], all_z1s[:, j])[0]
+                                for j in range(10)]) # m - 1
+
+        all_z1s -= norm_params[:, 1]
+        all_z1s /= norm_params[:, 0]
+
+        # real_norm_params = np.array([curve_fit(line, np.real(all_theories[:, j]), np.real(all_z1s[:, j]))[0]
+        #                              for j in range(10)])
+        # imag_norm_params = np.array([curve_fit(line, np.imag(all_theories[:, j]), np.imag(all_z1s[:, j]))[0]
+        #                              for j in range(10)])
         #
-        # all_z1s -= norm_params[:, 1]
-        # all_z1s /= norm_params[:, 0]
-
-        real_norm_params = np.array([curve_fit(line, np.real(all_theories[:, j]), np.real(all_z1s[:, j]))[0]
-                                     for j in range(10)])
-        imag_norm_params = np.array([curve_fit(line, np.imag(all_theories[:, j]), np.imag(all_z1s[:, j]))[0]
-                                     for j in range(10)])
-
-        Zreals = (np.real(all_z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
-        Zimags = (np.imag(all_z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
-
-        all_z1s = Zreals + (1j * Zimags)
+        # Zreals = (np.real(all_z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
+        # Zimags = (np.imag(all_z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
+        #
+        # all_z1s = Zreals + (1j * Zimags)
 
         error = np.real(all_z1s - all_theories).std()
-        error_imag = np.imag(all_z1s - all_theories).std()
+        # error_imag = np.imag(all_z1s - all_theories).std()
         print(colored('error : {:.3f}'.format(error), 'blue'))
-        print(colored('error imag: {:.3f}'.format(error_imag), 'blue'))
+        # print(colored('error imag: {:.3f}'.format(error_imag), 'blue'))
 
         print(colored('signal: {:.3f}'.format(all_theories.std()), 'blue'))
 
-        fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
-        axs3.set_ylim(-10, 10)
-        axs3.plot([-10, 10], [-10, 10], c='black')
-        for j in range(10):  # m - 1
-            axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
-        plt.draw()
-
-        fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
-        axs4.set_ylim(-10, 10)
-        axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
-        axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
-        plt.draw()
-
-        # lim = 80
         # fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
-        # axs3.set_xlim(0, lim)
-        # axs3.set_ylim(0, lim)
-        # axs3.plot([0, lim], [0, lim], c='black')
+        # axs3.set_ylim(-10, 10)
+        # axs3.plot([-10, 10], [-10, 10], c='black')
         # for j in range(10):  # m - 1
         #     axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
         # plt.draw()
         #
         # fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
-        # axs4.set_ylim(0, lim)
+        # axs4.set_ylim(-10, 10)
         # axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
         # axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
         # plt.draw()
+
+        lim = 80
+        fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
+        axs3.set_xlim(0, lim)
+        axs3.set_ylim(0, lim)
+        axs3.plot([0, lim], [0, lim], c='black')
+        for j in range(10):  # m - 1
+            axs3.plot(all_theories[:, j], all_z1s[:, j], linestyle='', marker='.', markersize=1)
+        plt.draw()
+
+        fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
+        axs4.set_ylim(0, lim)
+        axs4.plot(all_theories[0, :], linestyle='', marker='o', c='b')
+        axs4.plot(all_z1s[0, :], linestyle='', marker='x', c='r')
+        plt.draw()
 
         plt.show()
 
@@ -689,39 +553,39 @@ if __name__ == '__main__':
                 # z1s -= norm_params[:, 1]
                 # z1s /= norm_params[:, 0]
 
-                Iall = ampls.copy() ** 2
-                I0 = Iall[:, 0::4].copy()
-                I1 = Iall[:, 1::4].copy()
-                I2 = Iall[:, 2::4].copy()
-                I3 = Iall[:, 3::4].copy()
-                Xmeas = (I0 - I2) / scale_guess
-                Ymeas = (I1 - I3) / scale_guess
+                # Iall = ampls.copy() ** 2
+                # I0 = Iall[:, 0::4].copy()
+                # I1 = Iall[:, 1::4].copy()
+                # I2 = Iall[:, 2::4].copy()
+                # I3 = Iall[:, 3::4].copy()
+                # Xmeas = (I0 - I2) / scale_guess
+                # Ymeas = (I1 - I3) / scale_guess
+                #
+                # z1s = Xmeas + (1j * Ymeas)
+                #
+                # Zreals = (np.real(z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
+                # Zimags = (np.imag(z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
+                # z1s = Zreals + (1j * Zimags)
+                #
+                # test_z1s[test_batch_num * 240:(test_batch_num + 1) * 240, :] = z1s.copy()
+                #
+                # theories = np.dot(xs, w1_z.copy())
+                # test_theories[test_batch_num * 240:(test_batch_num + 1) * 240, :] = theories.copy()
 
-                z1s = Xmeas + (1j * Ymeas)
+                Imeas = ampls.copy() ** 2
+                Imeas = Imeas.reshape(240, 10, 4).mean(axis=-1)
+                Imeas *= scale_guess
+                z1s = Imeas.copy()
 
-                Zreals = (np.real(z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
-                Zimags = (np.imag(z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
-                z1s = Zreals + (1j * Zimags)
+                z1s -= norm_params[:, 1]
+                z1s /= norm_params[:, 0]
 
                 test_z1s[test_batch_num * 240:(test_batch_num + 1) * 240, :] = z1s.copy()
 
                 theories = np.dot(xs, w1_z.copy())
+                theories = np.abs(theories) ** 2
 
                 test_theories[test_batch_num * 240:(test_batch_num + 1) * 240, :] = theories.copy()
-
-                # Imeas = ampls.copy() ** 2
-                # Imeas = np.delete(Imeas, ref_spot, axis=1)
-                # Imeas *= scale_guess
-                # z1s = Imeas.copy()
-                #
-                # test_z1s[test_batch_num * 240:(test_batch_num + 1) * 240, :] = z1s.copy()
-                #
-                # Itheory = np.dot(xs, w1_z.copy())
-                # Itheory = np.delete(Itheory, ref_spot, axis=1)
-                # Itheory = np.abs(Itheory) ** 2
-                #
-                # theories = Itheory.copy()
-                # test_theories[test_batch_num * 240:(test_batch_num + 1) * 240, :] = theories.copy()
 
             else:
                 z1s = np.full((batch_size, 10), np.nan+(1j*np.nan))  # m - 1
@@ -787,39 +651,40 @@ if __name__ == '__main__':
             # z1s -= norm_params[:, 1]
             # z1s /= norm_params[:, 0]
 
-            Iall = ampls.copy() ** 2
-            I0 = Iall[:, 0::4].copy()
-            I1 = Iall[:, 1::4].copy()
-            I2 = Iall[:, 2::4].copy()
-            I3 = Iall[:, 3::4].copy()
-            Xmeas = (I0 - I2) / scale_guess
-            Ymeas = (I1 - I3) / scale_guess
+            # Iall = ampls.copy() ** 2
+            # I0 = Iall[:, 0::4].copy()
+            # I1 = Iall[:, 1::4].copy()
+            # I2 = Iall[:, 2::4].copy()
+            # I3 = Iall[:, 3::4].copy()
+            # Xmeas = (I0 - I2) / scale_guess
+            # Ymeas = (I1 - I3) / scale_guess
+            #
+            # z1s = Xmeas + (1j * Ymeas)
+            #
+            # Zreals = (np.real(z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
+            # Zimags = (np.imag(z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
+            # z1s = Zreals + (1j * Zimags)
+            #
+            # test_z1s[4800:, :] = z1s.copy()
+            #
+            # theories = np.dot(xs, w1_z.copy())
+            #
+            # test_theories[4800:, :] = theories.copy()
 
-            z1s = Xmeas + (1j * Ymeas)
+            Imeas = ampls.copy() ** 2
+            Imeas = Imeas.reshape(200, 10, 4).mean(axis=-1)
+            Imeas *= scale_guess
+            z1s = Imeas.copy()
 
-            Zreals = (np.real(z1s).copy() - real_norm_params[:, 1]) / real_norm_params[:, 0]
-            Zimags = (np.imag(z1s).copy() - imag_norm_params[:, 1]) / imag_norm_params[:, 0]
-            z1s = Zreals + (1j * Zimags)
+            z1s -= norm_params[:, 1]
+            z1s /= norm_params[:, 0]
 
             test_z1s[4800:, :] = z1s.copy()
 
             theories = np.dot(xs, w1_z.copy())
+            theories = np.abs(theories) ** 2
 
             test_theories[4800:, :] = theories.copy()
-
-            # Imeas = ampls.copy() ** 2
-            # Imeas = np.delete(Imeas, ref_spot, axis=1)
-            # Imeas *= scale_guess
-            # z1s = Imeas.copy()
-            #
-            # test_z1s[4800:, :] = z1s.copy()
-            #
-            # Itheory = np.dot(xs, w1_z.copy())
-            # Itheory = np.delete(Itheory, ref_spot, axis=1)
-            # Itheory = np.abs(Itheory) ** 2
-            #
-            # theories = Itheory.copy()
-            # test_theories[4800:, :] = theories.copy()
 
         else:
             z1s = np.full((200, 10), np.nan+(1j*np.nan))  # m - 1
@@ -834,20 +699,20 @@ if __name__ == '__main__':
         test_z1s = test_z1s[mask]
         test_theories = test_theories[mask]
 
-        fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
-        axs3.set_ylim(-10, 10)
-        axs3.plot([-10, 10], [-10, 10], c='black')
-        for j in range(10):  # m - 1
-            axs3.plot(test_theories[:, j], test_z1s[:, j], linestyle='', marker='.', markersize=1)
-        plt.draw()
-
-        fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
-        axs4.set_ylim(-10, 10)
-        axs4.plot(test_theories[0, :], linestyle='', marker='o', c='b')
-        axs4.plot(test_z1s[0, :], linestyle='', marker='x', c='r')
-        plt.draw()
-
-        plt.show()
+        # fig3, axs3 = plt.subplots(1, 1, figsize=(8, 4))
+        # axs3.set_ylim(-10, 10)
+        # axs3.plot([-10, 10], [-10, 10], c='black')
+        # for j in range(10):  # m - 1
+        #     axs3.plot(test_theories[:, j], test_z1s[:, j], linestyle='', marker='.', markersize=1)
+        # plt.draw()
+        #
+        # fig4, axs4 = plt.subplots(1, 1, figsize=(8, 4))
+        # axs4.set_ylim(-10, 10)
+        # axs4.plot(test_theories[0, :], linestyle='', marker='o', c='b')
+        # axs4.plot(test_z1s[0, :], linestyle='', marker='x', c='r')
+        # plt.draw()
+        #
+        # plt.show()
 
         xs = testX.copy()[mask]
         ys = testY.copy()[mask]
@@ -867,16 +732,16 @@ if __name__ == '__main__':
 
         # complex
         scaling = 0.6
+        #
+        # z1_x = np.real(test_z1s.copy())
+        # z1_y = np.imag(test_z1s.copy())
+        #
+        # a1_x = z1_x ** 2
+        # a1_y = z1_y ** 2
 
-        z1_x = np.real(test_z1s.copy())
-        z1_y = np.imag(test_z1s.copy())
+        # z2 = a1_x + a1_y
 
-        a1_x = z1_x ** 2
-        a1_y = z1_y ** 2
-
-        z2 = a1_x + a1_y
-
-        # z2 = test_z1s.copy()
+        z2 = test_z1s.copy()
         # z2 = test_theories.copy()
 
         a2 = softmax(z2 * scaling)
