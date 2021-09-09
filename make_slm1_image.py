@@ -1,18 +1,5 @@
 import numpy as np
 import cupy as cp
-import sys
-
-dims = sys.argv[1:4]
-n = int(dims[0])
-m = int(dims[1])
-
-ref_spot = m//2
-
-######################################################
-# SLM1 (Santec) #
-######################################################
-
-######## santec ########
 
 slm_resX = 1920
 slm_resY = 1080
@@ -36,20 +23,6 @@ dmd_resY = 1080
 
 dmd_w = 1920
 dmd_h = 1080
-
-# slm_block_w = int(((slm_w + 1) / n))
-# slm_block_h = int(((slm_h + 1) / m))
-#
-# g1_x = (slm_w - (slm_block_w * n)) // (n - 1)
-# g1_y = (slm_h - (slm_block_h * m)) // (m - 1)
-#
-# exl = (slm_w - (slm_block_w * n) - (n - 1) * g1_x) // 2
-# exr = (slm_w - (slm_block_w * n) - (n - 1) * g1_x) - exl
-# eyt = (slm_h - (slm_block_h * m) - (m - 1) * g1_y) // 2
-# eyb = (slm_h - (slm_block_h * m) - (m - 1) * g1_y) - eyt + 1
-#
-# slm_centres_x = np.array([exl + (i * (slm_block_w + g1_x)) + (slm_block_w // 2) for i in range(n)])
-# slm_centres_y = np.array([eyt + (j * (slm_block_h + g1_y)) + (slm_block_h // 2) for j in range(m)])
 
 # create index arrays
 x_SLM = slm_resX_actual//2
@@ -78,9 +51,10 @@ gpu_inv_sinc_LUT = cp.asarray(inv_sinc_LUT, dtype='float32')
 ref_block_norm = np.load('./tools/ref_block_norm.npy')
 
 
-def update_params(ref_block_ampl, batch_size, num_frames, is_complex=False):
+def update_params(_n, _m, ref_spot, ref_block_ampl, batch_size, num_frames, is_complex=False):
 
-    global slm_w, slm_sig_w, slm_ref_w, slm_h, ref_spot
+    global n, m
+    global slm_w, slm_sig_w, slm_ref_w, slm_h
     global cols_to_del, rows_to_del, slm_block_w, slm_block_h
     global dmd_block_w, dmd_block_h, slm_centers_x, slm_centers_y, insert_indx, insert_indx_dmd
     global gpu_dmd_centers_x, gpu_dmd_centers_y
@@ -90,6 +64,9 @@ def update_params(ref_block_ampl, batch_size, num_frames, is_complex=False):
     global ampl_ref_sindx, ampl_ref_eindx, ampl_ref_s, bit_values, bit_values_extended
     global o, u, e
     global ref_ampl_block, ref_phase_block, ref_block_norm
+
+    n = _n
+    m = _m
 
     if ref_block_ampl is not None:
         slm_w_local = slm_sig_w
@@ -182,22 +159,6 @@ def update_params(ref_block_ampl, batch_size, num_frames, is_complex=False):
             ref_ampl_block = np.ones((slm_ref_w, slm_h)) * ref_block_ampl
 
     return dmd_block_w
-
-
-# def make_slm_image(gpu_target_in, ref_block_val):
-#
-#     global slm_w, slm_sig_w, slm_ref_w, slm_h
-#     global cols_to_del, rows_to_del, slm_block_w, slm_block_h
-#
-#     slm_image = np.repeat(gpu_target_in.get(), slm_block_w, axis=0)
-#     slm_image = np.repeat(slm_image, slm_block_h, axis=1)
-#     slm_image = np.delete(slm_image, cols_to_del, 0)
-#     slm_image = np.delete(slm_image, rows_to_del, 1)
-#
-#     if ref_block_val is not None:
-#         slm_image = np.insert(slm_image, insert_indx, np.ones((slm_ref_w, slm_image.shape[1])) * ref_block_val, 0)
-#
-#     return slm_image
 
 
 def make_slm_rgb(target, ref_block_ampl):

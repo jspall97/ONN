@@ -1,71 +1,4 @@
 import numpy as np
-from scipy.io import loadmat
-import time
-import random
-
-# inputs = loadmat('./tools/MNIST digit - subsampled - 121.mat')
-#
-# num_train = 60000
-# num_test = 10000
-#
-# trainY_raw = inputs['trainY']
-# trainY = np.zeros((num_train, 10))
-# for i in range(num_train):
-#     trainY[i, trainY_raw[0, i]] = 1
-#
-# testY_raw = inputs['testY']
-# testY = np.zeros((num_test, 10))
-# for i in range(num_test):
-#     testY[i, testY_raw[0, i]] = 1
-#
-# trainX_raw = inputs['trainX']
-# trainX = np.empty((num_train, 121))
-# for i in range(num_train):
-#     trainX_k = trainX_raw[i, :] - trainX_raw[i, :].min()
-#     trainX_k = trainX_k / trainX_k.max()
-#     trainX[i, :] = trainX_k
-#
-# testX_raw = inputs['testX']
-# testX = np.empty((num_test, 121))
-# for i in range(num_test):
-#     testX_k = testX_raw[i, :] - testX_raw[i, :].min()
-#     testX_k = testX_k / testX_k.max()
-#     testX[i, :] = testX_k
-#
-# np.random.seed(0)
-# np.random.shuffle(trainX)
-# np.random.seed(0)
-# np.random.shuffle(trainY)
-# np.random.seed(0)
-# np.random.shuffle(testX)
-# np.random.seed(0)
-# np.random.shuffle(testY)
-#
-# valX = testX[:5000, :].copy()
-# testX = testX[5000:, :].copy()
-#
-# valY = testY[:5000, :].copy()
-# testY = testY[5000:, :].copy()
-#
-# trainX -= 0.1
-# trainX = np.clip(trainX, 0, 1)
-# trainX /= trainX.max()
-#
-# valX -= 0.1
-# valX = np.clip(valX, 0, 1)
-# valX /= valX.max()
-#
-# testX -= 0.1
-# testX = np.clip(testX, 0, 1)
-# testX /= testX.max()
-
-# trainX = 1-trainX
-# valX = 1-valX
-# testX = 1-testX
-
-# trainX = (trainX*dmd_block_w).astype(int)/dmd_block_w
-# valX = (valX*dmd_block_w).astype(int)/dmd_block_w
-# testX = (testX*dmd_block_w).astype(int)/dmd_block_w
 
 def relu(x):
     return np.maximum(0, x)
@@ -103,6 +36,7 @@ def accuracy(pred, label):
     perc = correct * 100 / pred.shape[0]
     return perc
 
+
 class DNN:
     def __init__(self, *adam_args, x, y, w1_0, w2_0, batch_size, num_batches, lr=0.001, nonlinear=False):
         self.x = x
@@ -132,7 +66,7 @@ class DNN:
         if self.nonlinear:
             self.a1 = relu(self.z1)
         else:
-            self.a1 = self.z1 #**2
+            self.a1 = self.z1
         self.z2 = np.dot(self.a1, self.w2)
 
         # self.z2 /= 10000
@@ -141,7 +75,6 @@ class DNN:
 
         # print(self.z2.min(), self.z2.max())
         # print(self.a2.min(), self.a2.max())
-
 
     def adam_update(self, dw, m_dw, v_dw):
 
@@ -166,7 +99,7 @@ class DNN:
         if self.nonlinear:
             a1_delta = z1_delta * relu_d(self.a1)  # w1
         else:
-            a1_delta = z1_delta #* 2*self.z1
+            a1_delta = z1_delta
 
         dw2 = np.dot(self.a1.T, a2_delta)
         dw1 = np.dot(xs.T, a1_delta)
@@ -177,17 +110,7 @@ class DNN:
         self.w2 -= adam_dw2
         self.w1 -= adam_dw1
 
-        # self.w1 = np.clip(self.w1, -uppers1_nm, uppers1_nm)
-        #
-        # self.w1[:, 0] = 0
-        # self.w1[:, -1] = 1
-
         self.t += 1
-
-    def predict(self, x):
-        z = np.dot(x, self.w1)
-        self.feedforward(z)
-        return self.a2.argmax(axis=1)
 
 
 class DNN_1d:
@@ -242,11 +165,6 @@ class DNN_1d:
         self.w1 -= adam_dw1
 
         self.t += 1
-
-    # def predict(self, x):
-    #     z = np.dot(x, self.w1)
-    #     self.feedforward(z)
-    #     return self.a1.argmax(axis=1)
 
 
 class DNN_complex:

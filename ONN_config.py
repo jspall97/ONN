@@ -1,50 +1,43 @@
-from pypylon import pylon
-from pypylon import genicam
 import time
-import sys
-import threading
-import time
-import sys
-import signal
 import numpy as np
-from scipy.optimize import curve_fit
 import cupy as cp
+from scipy.optimize import curve_fit
+from scipy.io import loadmat
+from termcolor import colored
+from pypylon import pylon
 from glumpy import app
-# from make_dmd_image import make_dmd_rgb, make_dmd_image
-# from MNIST import map_vec_to_arr
+from glumpy.app import clock
 from glumpy_display import setup, window_on_draw
 from slm_display import SLMdisplay
 from make_slm1_image import make_slm_rgb, make_dmd_image, make_dmd_batch, update_params
-from multiprocessing import Process, Pipe
-from ANN import DNN, DNN_1d, DNN_complex, accuracy
-from scipy.io import loadmat
-import matplotlib.pyplot as plt
-import random
-from termcolor import colored
-import queue
-from collections import deque
-import ticking
-from glumpy.app import clock
-from pylon import view_camera
 
 mempool = cp.get_default_memory_pool()
 pinned_mempool = cp.get_default_pinned_memory_pool()
 
-dims = sys.argv[1:4]
-n = int(dims[0])
-m = int(dims[1])
+#####################
+# DEFAULT VARIABLES #
+#####################
 
+n = 100
+m = 40
 ref_spot = m//2
-
 ref_block_val = 0.3
 batch_size = 240
-num_batches = 5
 num_frames = 10
+is_complex = True
+mout = 10
+ampl_norm_val = 0.1
+scale_guess = 10
+meas_type = 'complex'
 
-dmd_block_w = update_params(ref_block_val, batch_size, num_frames, is_complex=True)
+dmd_block_w = update_params(n, m, ref_spot, ref_block_val, batch_size, num_frames, is_complex)
 
+##############
+# LOAD MNIST #
+##############
 
-inputs = loadmat('C:/Users/spall/OneDrive - Nexus365/Code/JS/controller/onn_test/MNIST digit - subsampled - 100.mat')
+inputs = loadmat('C:/Users/spall/OneDrive - Nexus365/Code/JS/controller/onn_test/MNIST digit - subsampled - {}.mat'
+                 .format(n))
 
 num_train = 60000
 num_test = 10000
@@ -90,15 +83,15 @@ testY = testY[5000:, :].copy()
 
 trainX -= 0.1
 trainX = np.clip(trainX, 0, 1)
-trainX /= trainX.max()
+trainX /= np.max(trainX)
 
 valX -= 0.1
 valX = np.clip(valX, 0, 1)
-valX /= valX.max()
+valX /= np.max(valX)
 
 testX -= 0.1
 testX = np.clip(testX, 0, 1)
-testX /= testX.max()
+testX /= np.max(testX)
 
 trainX = (trainX*dmd_block_w).astype(int)/dmd_block_w
 valX = (valX*dmd_block_w).astype(int)/dmd_block_w
@@ -127,12 +120,14 @@ window.show()
 
 dmd_clock = clock.Clock()
 
+
 @window.event
 def on_draw(dt):
     global cp_arr, frame_count, target_frames
     window_on_draw(window, screen, cuda_buffer, cp_arr)
     frame_count += 1
     cp_arr = target_frames[frame_count % len(target_frames)]
+
 
 screen, cuda_buffer, context = setup(1920, 1080)
 
@@ -166,6 +161,7 @@ print()
 
 pylon.FeaturePersistence.Load("./tools/pylon_settings.pfs", camera.GetNodeMap())
 
+
 class CaptureProcess(pylon.ImageEventHandler):
     def __init__(self):
         super().__init__()
@@ -185,18 +181,12 @@ class CaptureProcess(pylon.ImageEventHandler):
             # imageWindow.SetImage(grab_result)
             # imageWindow.Show()
 
+
 # register the background handler and start grabbing using background pylon thread
 capture = CaptureProcess()
 camera.RegisterImageEventHandler(capture, pylon.RegistrationMode_ReplaceAll, pylon.Cleanup_None)
 camera.StartGrabbing(pylon.GrabStrategy_OneByOne, pylon.GrabLoop_ProvidedByInstantCamera)
 time.sleep(1)
-
-ampl_norm_val = 0.1
-
-scale_guess = 10
-
-batch_size = 240
-num_frames = 10
 
 target_frames = cp.zeros((num_frames+4, 1080, 1920, 4), dtype=cp.uint8)
 target_frames[..., -1] = 255
@@ -208,37 +198,96 @@ for _ in range(5):
     app.run(clock=dmd_clock, framerate=0, framecount=fc)
     time.sleep(0.1)
 
-print('finished config')
-print('############')
-print()
+print('finished config\n')
+print('############\n')
 
-complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
-
-# actual_uppers_arr_256 = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_256.npy")
-#
-# actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot+1]
-#
-# uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
-# uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
-#
-# k = np.abs(np.linspace(-1, 1, 256) - 0.1).argmin()
-# z0 = actual_uppers_arr_256[k, ...].sum(axis=0)
-#
-# z0_norm = z0.copy()/z0.max()
-# z0_norm = np.delete(z0_norm, ref_spot)
-#
-# gpu_actual_uppers_arr_256 = cp.asarray(actual_uppers_arr_256)
+#############
+# Functions #
+#############
 
 
-actual_uppers_arr_128_flat = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_128_flat.npy")
+def load_lut():
 
-actual_uppers_arr_128_flat /= actual_uppers_arr_128_flat.max()
+    global uppers1_nm, uppers1_ann, gpu_actual_uppers_arr, complex_output_ratios
 
-uppers1_nm_flat = actual_uppers_arr_128_flat[-1, ...].copy()
+    if meas_type == 'reals':
 
-uppers1_ann = uppers1_nm_flat.copy()[:, ::4]
+        actual_uppers_arr_256 = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_256.npy")
 
-gpu_actual_uppers_arr_128_flat = cp.asarray(actual_uppers_arr_128_flat)
+        actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot+1]
+
+        uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
+        uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
+
+        # k = np.abs(np.linspace(-1, 1, 256) - 0.1).argmin()
+        # z0 = actual_uppers_arr_256[k, ...].sum(axis=0)
+        #
+        # z0_norm = z0.copy()/z0.max()
+        # z0_norm = np.delete(z0_norm, ref_spot)
+
+        gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_256)
+
+    else:
+
+        complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
+
+        actual_uppers_arr_128_flat = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_128_flat.npy")
+
+        actual_uppers_arr_128_flat /= np.max(actual_uppers_arr_128_flat)
+
+        uppers1_nm = actual_uppers_arr_128_flat[-1, ...].copy()
+        uppers1_ann = uppers1_nm.copy()[:, ::4]
+
+        gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_128_flat)
+
+    return uppers1_nm, uppers1_ann
+
+
+def update_slm(arr, lut=False, ref=False, noise_arr_A=None, noise_arr_phi=None):
+
+    global ampl_norm_val, ref_spot, is_complex, gpu_actual_uppers_arr, complex_output_ratios
+
+    if arr.shape[1] == m-1:
+        arr = np.insert(arr, ref_spot, np.zeros(n), 1)
+
+    if is_complex:
+        arr = np.repeat(arr.copy(), 4, axis=1) * complex_output_ratios.copy()[None, :]
+
+        if lut:
+            gpu_arr = cp.abs(cp.asarray(arr.copy()))
+            map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr - gpu_arr), axis=0)
+            arr_A = cp.linspace(0., 1., 128)[map_indx]
+        else:
+            arr_A = cp.abs(cp.asarray(arr.copy()))
+
+        arr_phi = cp.angle(cp.array(arr.copy()))
+
+        if noise_arr_A is not None:
+            arr_A += cp.array(noise_arr_A)
+
+        if noise_arr_phi is not None:
+            arr_phi += cp.array(noise_arr_phi)
+
+        arr_out = arr_A * cp.exp(1j*arr_phi)
+
+    else:
+
+        if noise_arr_A is not None:
+            arr += noise_arr_A.copy()
+
+        if lut:
+            gpu_arr = cp.asarray(arr.copy())
+            map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr - gpu_arr), axis=0)
+            arr_out = cp.linspace(-1., 1., 256)[map_indx]
+        else:
+            arr_out = cp.asarray(arr.copy())
+
+        if ref:
+            arr_out[:, ref_spot] = ampl_norm_val
+
+    arr_out = np.flip(arr_out.get(), axis=1)
+    img = make_slm_rgb(arr_out, ref_block_val)
+    slm.updateArray(img)
 
 
 x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
@@ -246,8 +295,6 @@ y_centers = np.load('./tools/y_centers_list.npy')
 
 
 def find_spot_ampls(arrs):
-
-    # arrs = np.array([recombine(arr.T) for arr in arrs_in])
 
     mask = arrs < 3
     arrs -= 2
@@ -271,51 +318,9 @@ def find_spot_ampls(arrs):
     return spot_ampls.T
 
 
-def update_slm(arr, lut=False, ref=False, noise_arr_A=None, noise_arr_phi=None):
-
-    global ampl_norm_val, ref_spot
-
-    if arr.shape[1] == m-1:
-        arr = np.insert(arr, ref_spot, np.zeros(n), 1)
-
-    if arr.shape[1] == 10:
-        arr = np.repeat(arr.copy(), 4, axis=1) * complex_output_ratios.copy()[None, :]
-
-    if lut:
-        # gpu_arr = cp.asarray(arr)
-        # map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr_256 - gpu_arr), axis=0)
-        # arr_A = cp.linspace(-1., 1., 256)[map_indx].get()
-
-        gpu_arr = cp.abs(cp.asarray(arr.copy()))
-        map_indx = cp.argmin(cp.abs(gpu_actual_uppers_arr_128_flat - gpu_arr), axis=0)
-        arr_A = cp.linspace(0, 1, 128)[map_indx]
-
-    else:
-        arr_A = cp.abs(cp.asarray(arr.copy()))
-
-    if ref:
-        arr_A[:, ref_spot] = ampl_norm_val
-
-    arr_phi = cp.angle(cp.array(arr.copy()))
-
-    if noise_arr_A is not None:
-        arr_A += cp.array(noise_arr_A)
-
-    if noise_arr_phi is not None:
-        arr_phi += cp.array(noise_arr_phi)
-
-    arr_out = arr_A * cp.exp(1j*arr_phi)
-
-    arr_out = np.flip(arr_out.get(), axis=1)
-    img = make_slm_rgb(arr_out, ref_block_val)
-    slm.updateArray(img)
-    # time.sleep(0.7)
-
-
 def init_dmd():
 
-    global target_frames, ref_block_val, batch_size, num_frames
-    global cp_arr, frame_count, capture, dmd_clock
+    global target_frames, num_frames, cp_arr, frame_count, capture, dmd_clock
 
     target_frames = cp.zeros((num_frames + 4, 1080, 1920, 4), dtype=cp.uint8)
     target_frames[..., -1] = 255
@@ -328,10 +333,12 @@ def init_dmd():
         time.sleep(0.1)
 
 
-def run_frames(vecs_in, ref):
+def run_batch(vecs_in, ref):
 
     global target_frames, ref_block_val, batch_size, num_frames
     global cp_arr, frame_count, capture, dmd_clock
+
+    t0 = time.time()
 
     target_frames[2:-2, :, :, :-1] = make_dmd_batch(vecs_in, ref=ref, ref_block_val=ref_block_val,
                                                     batch_size=batch_size, num_frames=num_frames)
@@ -345,7 +352,13 @@ def run_frames(vecs_in, ref):
 
     frames = np.array(capture.frames.copy())
 
-    return frames
+    ampls = find_spot_ampls(frames)
+
+    t1 = time.time()
+
+    print('batch time: {:.3f}'.format(t1-t0))
+
+    return frames, ampls
 
 
 def check_num_frames(ampls_in, true_size):
@@ -355,8 +368,8 @@ def check_num_frames(ampls_in, true_size):
     if ampls_in.shape[0] == true_size:
 
         meas = ampls_in.copy().reshape((num_frames, true_size // num_frames, m))
-        diffs = np.abs(np.array([meas[k + 1, :, m // 3] - meas[k, :, m // 3]
-                                 for k in range(num_frames - 1)])).mean(axis=1)
+        diffs = np.abs(np.array([meas[kk + 1, :, m // 3] - meas[kk, :, m // 3]
+                                 for kk in range(num_frames - 1)])).mean(axis=1)
         diffs /= diffs.max()
         repeats = (diffs < 0.25).sum() > 0
 
@@ -372,11 +385,17 @@ def check_num_frames(ampls_in, true_size):
         return False
 
 
-def process_ampls(ampls_in, meas_type):
+def process_ampls(ampls_in):
+
+    global meas_type
 
     if meas_type == 'real':
-        z1s = ampls_in - Aref
-        z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
+        # z1s = ampls_in - Aref
+        # z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
+        # z1s = np.delete(z1s, ref_spot, axis=1)
+
+        z1s = ampls_in.copy()
+        z1s /= z1s[ref_spot]
         z1s = np.delete(z1s, ref_spot, axis=1)
 
     elif meas_type == 'complex':
@@ -402,11 +421,12 @@ def process_ampls(ampls_in, meas_type):
     return z1s
 
 
-def line(x, grad, c):
+def find_norm_params(theory, measured):
+
+    global meas_type
+
+    def line(x, grad, c):
         return (grad * x) + c
-
-
-def find_norm_params(theory, measured, meas_type):
 
     assert theory.shape[1] == measured.shape[1]
 
@@ -426,7 +446,9 @@ def find_norm_params(theory, measured, meas_type):
     return norm_params
 
 
-def normalise(z1s_in, norm_params, meas_type):
+def normalise(z1s_in, norm_params):
+
+    global meas_type
 
     if meas_type == 'complex':
 
@@ -438,6 +460,40 @@ def normalise(z1s_in, norm_params, meas_type):
         z1s = (z1s_in - norm_params[:, 1])/norm_params[:, 0]
 
     return z1s
+
+
+def update_norm_params(theory, measured, norm_params):
+    global meas_type
+
+    def line(x, grad, c):
+        return (grad * x) + c
+
+    assert theory.shape[1] == measured.shape[1]
+
+    if meas_type == 'complex':
+
+        real_norm_params_adjust = np.array([curve_fit(line, np.real(theory[:, j]), np.real(measured[:, j]))[0]
+                                            for j in range(mout)])
+        real_norm_params = np.real(norm_params)
+        real_norm_params[:, 1] += real_norm_params[:, 0].copy() * real_norm_params_adjust[:, 1].copy()
+        real_norm_params[:, 0] *= real_norm_params_adjust[:, 0].copy()
+
+        imag_norm_params_adjust = np.array([curve_fit(line, np.imag(theory[:, j]), np.imag(measured[:, j]))[0]
+                                            for j in range(mout)])
+        imag_norm_params = np.imag(norm_params)
+        imag_norm_params[:, 1] += imag_norm_params[:, 0].copy() * imag_norm_params_adjust[:, 1].copy()
+        imag_norm_params[:, 0] *= imag_norm_params_adjust[:, 0].copy()
+
+        norm_params = real_norm_params + (1j * imag_norm_params)
+
+    else:
+
+        norm_params_adjust = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
+                                       for j in range(mout)])
+        norm_params[:, 1] += norm_params[:, 0].copy() * norm_params_adjust[:, 1].copy()
+        norm_params[:, 0] *= norm_params_adjust[:, 0].copy()
+
+    return norm_params
 
 
 def close():
