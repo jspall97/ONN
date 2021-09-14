@@ -22,6 +22,7 @@ meas_type = ONN.meas_type
 uppers1_nm, uppers1_ann = ONN.load_lut()
 
 layers = 1
+ref_on = False
 
 ###############
 # CALIBRATING #
@@ -35,9 +36,9 @@ all_theories = []
 for k in range(5):
 
     np.random.seed(k)
-    slm_arr = np.random.normal(0, 0.4, (n, m))
-    slm_arr = np.clip(slm_arr, -uppers1_nm, uppers1_nm)
-    ONN.update_slm(slm_arr, lut=True, ref=True)
+    slm_arr = np.random.normal(0, 0.4, (n, mout))
+    slm_arr = np.clip(slm_arr, -uppers1_ann, uppers1_ann)
+    ONN.update_slm(slm_arr, lut=True, ref=ref_on)
     time.sleep(1)
 
     batch_indxs = np.random.randint(0, 60000, batch_size)
@@ -46,7 +47,7 @@ for k in range(5):
 
     xs = ONN.trainX[batch_indxs, :].copy()
 
-    frames, ampls = ONN.run_batch(vecs, ref=0)
+    frames, ampls = ONN.run_batch(vecs, ref=ref_on)
 
     print(frames.shape)
 
@@ -55,7 +56,7 @@ for k in range(5):
         z1s = ONN.process_ampls(ampls)
 
         theories = np.dot(xs, slm_arr.copy())
-        theories = np.delete(theories, ref_spot, axis=1)
+        # theories = np.delete(theories, ref_spot, axis=1)
 
         all_z1s.append(z1s)
         all_theories.append(theories)
@@ -171,7 +172,7 @@ for epoch_num in range(num_epochs):
 
     epoch_start_time = time.time()
 
-    ONN.update_slm(dnn.w1.copy(), lut=True, ref=True)
+    ONN.update_slm(dnn.w1.copy(), lut=True, ref=ref_on)
     time.sleep(1)
 
     epoch_rand_indxs = np.arange(60000)
@@ -190,12 +191,13 @@ for epoch_num in range(num_epochs):
         vecs = ONN.trainX_cp[batch_indxs, :]
         xs = ONN.trainX[batch_indxs, :].copy()
 
-        frames, ampls = ONN.run_batch(vecs, ref=0)
+        frames, ampls = ONN.run_batch(vecs, ref=ref_on)
 
         print(ampls.shape)
 
         if ONN.check_num_frames(ampls, batch_size):
             z1s = ONN.process_ampls(ampls)
+            z1s = ONN.normalise(z1s, norm_params)
 
             theories = np.dot(xs, dnn.w1.copy())
 
@@ -214,7 +216,7 @@ for epoch_num in range(num_epochs):
     # noise_arr = sys_noise_arr.copy()
     noise_arr = None
 
-    ONN.update_slm(dnn.w1.copy(), lut=True, ref=True, noise_arr_A=noise_arr, noise_arr_phi=None)
+    ONN.update_slm(dnn.w1.copy(), lut=True, ref=ref_on, noise_arr_A=noise_arr, noise_arr_phi=None)
     time.sleep(1)
 
     ##########################
@@ -229,7 +231,7 @@ for epoch_num in range(num_epochs):
 
         vecs = ONN.trainX_cp[batch_indxs_list[batch_num], :].copy()
 
-        frames, ampls = ONN.run_batch(vecs, ref=0)
+        frames, ampls = ONN.run_batch(vecs, ref=ref_on)
 
         t0 = time.time()
 
@@ -261,7 +263,7 @@ for epoch_num in range(num_epochs):
             # noise_arr = sys_noise_arr.copy()
             noise_arr = None
 
-            ONN.update_slm(dnn.w1.copy(), lut=True, ref=True, noise_arr_A=noise_arr, noise_arr_phi=None)
+            ONN.update_slm(dnn.w1.copy(), lut=True, ref=ref_on, noise_arr_A=noise_arr, noise_arr_phi=None)
 
             if dnn.loss < loss[-1]:
                 best_w1 = dnn.w1.copy()
@@ -294,7 +296,8 @@ for epoch_num in range(num_epochs):
                 .format(epoch_num, batch_num), theories)
 
         np.save('D:/MNIST/data/w1/w1_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w1))
-        np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w2))
+        if layers == 2:
+            np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(dnn.w2))
 
         for j in range(mout):
             eg_line[j].set_xdata(np.real(theories[:, j]))
@@ -331,10 +334,10 @@ for epoch_num in range(num_epochs):
     # noise_arr = sys_noise_arr.copy()
     noise_arr = None
 
-    ONN.update_slm(dnn.w1.copy(), lut=True, ref=True, noise_arr_A=noise_arr, noise_arr_phi=None)
+    ONN.update_slm(dnn.w1.copy(), lut=True, ref=ref_on, noise_arr_A=noise_arr, noise_arr_phi=None)
     time.sleep(1)
 
-    val_z1s = np.full((4800, m-1), np.nan)
+    val_z1s = np.full((4800, mout), np.nan)
 
     for val_batch_num in range(20):
 
@@ -342,7 +345,7 @@ for epoch_num in range(num_epochs):
 
         vecs = ONN.valX_cp[val_batch_num * 240:(val_batch_num + 1) * 240, :].copy()
 
-        frames, ampls = ONN.run_batch(vecs, ref=0)
+        frames, ampls = ONN.run_batch(vecs, ref=ref_on)
 
         np.save('D:/MNIST/raw_images/validation/images/images_epoch_{}_batch_{}.npy'
                 .format(epoch_num, val_batch_num), frames)
@@ -360,8 +363,8 @@ for epoch_num in range(num_epochs):
             theories = np.dot(xs, dnn.w1.copy())
 
         else:
-            z1s = np.full((batch_size, mout), np.nan + (1j * np.nan))
-            theories = np.full((batch_size, mout), np.nan + (1j * np.nan))
+            z1s = np.full((batch_size, mout), np.nan)
+            theories = np.full((batch_size, mout), np.nan)
 
         np.save('D:/MNIST/data/validation/measured/measured_arr_epoch_{}_batch_{}.npy'
                 .format(epoch_num, val_batch_num), z1s)

@@ -22,14 +22,14 @@ meas_type = ONN.meas_type
 uppers1_nm, uppers1_ann = ONN.load_lut()
 
 layers = 1
-ref_on = True
+ref_on = False
 
 if meas_type == 'reals':
-    # w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
+    w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
 
-    w1 = np.load('D:/MNIST/data/best_w1.npy')
+    # w1 = np.load('D:/MNIST/data/best_w1.npy')
 
-    ONN.update_slm(w1, lut=True, ref=True)
+    ONN.update_slm(w1, lut=True, ref=ref_on)
     time.sleep(1)
 
     if layers == 2:
@@ -37,24 +37,26 @@ if meas_type == 'reals':
         w2 = np.load('D:/MNIST/data/best_w2.npy')
 
 else:
-    # w1_x = np.load('D:/MNIST/data/best_w1_x.npy')
-    # w1_y = np.load('D:/MNIST/data/best_w1_y.npy')
+    w1_x = np.load('D:/MNIST/data/best_w1_x.npy')
+    w1_y = np.load('D:/MNIST/data/best_w1_y.npy')
 
-    w1_x = np.load('D:/MNIST/data/best_w1_x_offline.npy')
-    w1_y = np.load('D:/MNIST/data/best_w1_y_offline.npy')
+    # w1_x = np.load('D:/MNIST/data/best_w1_x_offline.npy')
+    # w1_y = np.load('D:/MNIST/data/best_w1_y_offline.npy')
 
     w1 = w1_x.copy() + (1j * w1_y.copy())
 
-    ONN.update_slm(w1, lut=True, ref=False)
+    ONN.update_slm(w1, lut=True, ref=ref_on)
     time.sleep(1)
 
 accs = []
 
-for rep in range(1):
+for rep in range(5):
 
     ###############
     # CALIBRATING #
     ###############
+
+    ONN.init_dmd()
 
     all_z1s = []
     all_theories = []
@@ -93,6 +95,8 @@ for rep in range(1):
     np.save('./tools/temp_theories.npy', all_theories)
 
     norm_params = ONN.find_norm_params(all_theories, all_z1s)
+
+    print(norm_params)
 
     all_z1s = ONN.normalise(all_z1s, norm_params)
 
@@ -139,8 +143,12 @@ for rep in range(1):
 
     ONN.init_dmd()
 
-    test_z1s = np.full((5000, mout), np.nan+(1j*np.nan))
-    test_theories = np.full((5000, mout), np.nan+(1j*np.nan))
+    if meas_type == 'complex':
+        test_z1s = np.full((5000, mout), np.nan+(1j*np.nan))
+        test_theories = np.full((5000, mout), np.nan+(1j*np.nan))
+    else:
+        test_z1s = np.full((5000, mout), np.nan)
+        test_theories = np.full((5000, mout), np.nan)
 
     for test_batch_num in range(20):
 
@@ -209,8 +217,12 @@ for rep in range(1):
         test_theories[4800:, :] = theories.copy()
 
     else:
-        z1s = np.full((200, mout), np.nan+(1j*np.nan))
-        theories = np.full((200, mout), np.nan+(1j*np.nan))
+        if meas_type == 'complex':
+            z1s = np.full((200, mout), np.nan+(1j*np.nan))
+            theories = np.full((200, mout), np.nan+(1j*np.nan))
+        else:
+            z1s = np.full((200, mout), np.nan)
+            theories = np.full((200, mout), np.nan)
 
     np.save('D:/MNIST/data/testing/measured/measured_arr_rep_{}_batch_{}.npy'
             .format(rep, test_batch_num), z1s)
@@ -240,7 +252,7 @@ for rep in range(1):
 
         if layers == 1:
 
-            a1s = softmax(test_z1s*2)
+            a1s = softmax(test_z1s*2.)
             pred = a1s.argmax(axis=1)
 
         elif layers == 2:
@@ -253,15 +265,20 @@ for rep in range(1):
             a2s = softmax(z2s)
             pred = a2s.argmax(axis=1)
 
-    if meas_type == 'complex':
+    elif meas_type == 'complex':
         z1_x = np.real(test_z1s.copy())
         z1_y = np.imag(test_z1s.copy())
+
+        # z1_x = np.real(test_theories.copy())
+        # z1_y = np.imag(test_theories.copy())
+
         z2 = (z1_x ** 2) + (z1_y ** 2)
         scaling = 0.6
         a2 = softmax(z2 * scaling)
         pred = a2.argmax(axis=1)
 
     elif meas_type == 'complex_power':
+        print('complex power')
         z2 = test_z1s.copy()
         # z2 = test_theories.copy()
         scaling = 0.6
@@ -275,11 +292,13 @@ for rep in range(1):
 
     accs.append(acc)
 
-    print('\n######################################################################')
+    print('\n###########################################')
     print(colored('time : {:.2f}, accuracy : {:.2f}'.format(time.time() - start_time, acc), 'green'))
-    print('######################################################################\n')
+    print('###########################################\n')
 
     print()
+
+    time.sleep(1)
 
 print(np.mean(np.array(accs)))
 

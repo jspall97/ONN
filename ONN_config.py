@@ -14,9 +14,33 @@ from make_slm1_image import make_slm_rgb, make_dmd_image, make_dmd_batch, update
 mempool = cp.get_default_memory_pool()
 pinned_mempool = cp.get_default_pinned_memory_pool()
 
-#####################
-# DEFAULT VARIABLES #
-#####################
+#############
+# VARIABLES #
+#############
+#
+# n = 100
+# m = 40
+# ref_spot = m//2
+# ref_block_val = 0.3
+# batch_size = 240
+# num_frames = 10
+# is_complex = True
+# mout = 10
+# ampl_norm_val = 0.1
+# scale_guess = 35
+# meas_type = 'complex'
+
+# n = 100
+# m = 40
+# ref_spot = m//2
+# ref_block_val = 0.
+# batch_size = 240
+# num_frames = 10
+# is_complex = True
+# mout = 10
+# ampl_norm_val = 0.1
+# scale_guess = 0.3
+# meas_type = 'complex_power'
 
 n = 100
 m = 40
@@ -24,11 +48,12 @@ ref_spot = m//2
 ref_block_val = 0.3
 batch_size = 240
 num_frames = 10
-is_complex = True
+is_complex = False
 mout = 10
 ampl_norm_val = 0.1
-scale_guess = 10
-meas_type = 'complex'
+scale_guess = 1.4
+ref_guess = 5.6
+meas_type = 'reals'
 
 dmd_block_w = update_params(n, m, ref_spot, ref_block_val, batch_size, num_frames, is_complex)
 
@@ -173,7 +198,7 @@ class CaptureProcess(pylon.ImageEventHandler):
 
             image = grab_result.GetArray()
 
-            if image.max() > 10:
+            if image.max() > 8:
                 self.frames.append(image)
 
             self.frames = self.frames[-1001:]
@@ -214,10 +239,11 @@ def load_lut():
 
         actual_uppers_arr_256 = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_256.npy")
 
-        actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot+1]
+        # actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot+1]
 
         uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
-        uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
+        # uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
+        uppers1_ann = uppers1_nm.copy()[:, ::4]
 
         # k = np.abs(np.linspace(-1, 1, 256) - 0.1).argmin()
         # z0 = actual_uppers_arr_256[k, ...].sum(axis=0)
@@ -229,18 +255,19 @@ def load_lut():
 
     else:
 
-        complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
-
         actual_uppers_arr_128_flat = np.load("C:/Users/spall/PycharmProjects/ONN/tools/actual_uppers_arr_128_flat.npy")
 
         actual_uppers_arr_128_flat /= np.max(actual_uppers_arr_128_flat)
 
         uppers1_nm = actual_uppers_arr_128_flat[-1, ...].copy()
-        uppers1_ann = uppers1_nm.copy()[:, ::4]
-
+        # uppers1_ann = uppers1_nm.copy()[:, ::4]
+        uppers1_ann = uppers1_nm.reshape(n, 10, 4).mean(axis=-1)
         gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_128_flat)
 
     return uppers1_nm, uppers1_ann
+
+
+complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
 
 
 def update_slm(arr, lut=False, ref=False, noise_arr_A=None, noise_arr_phi=None):
@@ -271,6 +298,8 @@ def update_slm(arr, lut=False, ref=False, noise_arr_A=None, noise_arr_phi=None):
         arr_out = arr_A * cp.exp(1j*arr_phi)
 
     else:
+
+        arr = np.repeat(arr.copy(), 4, axis=1) * complex_output_ratios.copy()[None, :]
 
         if noise_arr_A is not None:
             arr += noise_arr_A.copy()
@@ -389,14 +418,18 @@ def process_ampls(ampls_in):
 
     global meas_type
 
-    if meas_type == 'real':
+    if meas_type == 'reals':
         # z1s = ampls_in - Aref
         # z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
         # z1s = np.delete(z1s, ref_spot, axis=1)
 
-        z1s = ampls_in.copy()
-        z1s /= z1s[ref_spot]
-        z1s = np.delete(z1s, ref_spot, axis=1)
+        # z1s = ampls_in.copy()
+        # z1s /= z1s[ref_spot]
+        # z1s = np.delete(z1s, ref_spot, axis=1)
+
+        z1s = (ampls_in.copy() - ref_guess)
+        z1s = z1s.reshape((z1s.shape[0], 10, 4)).mean(axis=-1)
+        z1s *= scale_guess
 
     elif meas_type == 'complex':
 
@@ -452,17 +485,17 @@ def normalise(z1s_in, norm_params):
 
     if meas_type == 'complex':
 
-        Zreals = (np.real(z1s_in).copy() - np.real(norm_params)[:, 1]) / np.real(norm_params)[:, 0]
-        Zimags = (np.imag(z1s_in).copy() - np.imag(norm_params)[:, 1]) / np.imag(norm_params)[:, 0]
+        Zreals = (np.real(z1s_in).copy() - np.real(norm_params.copy())[:, 1]) / np.real(norm_params.copy())[:, 0]
+        Zimags = (np.imag(z1s_in).copy() - np.imag(norm_params.copy())[:, 1]) / np.imag(norm_params.copy())[:, 0]
         z1s = Zreals + (1j * Zimags)
 
     else:
-        z1s = (z1s_in - norm_params[:, 1])/norm_params[:, 0]
+        z1s = (z1s_in - norm_params[:, 1].copy())/norm_params[:, 0].copy()
 
     return z1s
 
 
-def update_norm_params(theory, measured, norm_params):
+def update_norm_params(theory, measured, norm_params_in):
     global meas_type
 
     def line(x, grad, c):
@@ -474,13 +507,13 @@ def update_norm_params(theory, measured, norm_params):
 
         real_norm_params_adjust = np.array([curve_fit(line, np.real(theory[:, j]), np.real(measured[:, j]))[0]
                                             for j in range(mout)])
-        real_norm_params = np.real(norm_params)
+        real_norm_params = np.real(norm_params_in.copy())
         real_norm_params[:, 1] += real_norm_params[:, 0].copy() * real_norm_params_adjust[:, 1].copy()
         real_norm_params[:, 0] *= real_norm_params_adjust[:, 0].copy()
 
         imag_norm_params_adjust = np.array([curve_fit(line, np.imag(theory[:, j]), np.imag(measured[:, j]))[0]
                                             for j in range(mout)])
-        imag_norm_params = np.imag(norm_params)
+        imag_norm_params = np.imag(norm_params_in.copy())
         imag_norm_params[:, 1] += imag_norm_params[:, 0].copy() * imag_norm_params_adjust[:, 1].copy()
         imag_norm_params[:, 0] *= imag_norm_params_adjust[:, 0].copy()
 
@@ -490,7 +523,8 @@ def update_norm_params(theory, measured, norm_params):
 
         norm_params_adjust = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
                                        for j in range(mout)])
-        norm_params[:, 1] += norm_params[:, 0].copy() * norm_params_adjust[:, 1].copy()
+        norm_params = norm_params_in.copy()
+        norm_params[:, 1] += norm_params_in[:, 0].copy() * norm_params_adjust[:, 1].copy()
         norm_params[:, 0] *= norm_params_adjust[:, 0].copy()
 
     return norm_params

@@ -87,15 +87,20 @@ plt.show()
 
 fig3, [[axs0, axs1, axs2], [axs3, axs4, axs5]] = plt.subplots(2, 3, figsize=(8, 4))
 
-axs3.set_ylim(-10, 10)
 axs1.set_ylim(-10, 10)
 axs1.set_xlim(-10, 10)
+
+axs2.set_ylim(0, 5)
+axs2.set_xlim(0, 1000)
+
+axs3.set_ylim(-10, 10)
+
 axs4.set_ylim(-10, 10)
 axs4.set_xlim(-10, 10)
-axs5.set_ylim(0, 100)
-axs5.set_xlim(0, 30)
-axs2.set_ylim(0, 5)
-axs2.set_xlim(0, 1500)
+
+axs5.set_ylim(60, 100)
+axs5.set_xlim(0, 20)
+
 
 axs1.plot([-10, 10], [-10, 10], c='black')
 eg_line = [axs1.plot(np.real(all_theories[:, j]), np.real(all_z1s[:, j]), linestyle='', marker='.', markersize=1)[0]
@@ -126,10 +131,10 @@ num_epochs = 20
 lim_arr = uppers1_ann.copy()
 
 np.random.seed(100)
-w1_x = np.random.normal(0, 0.5, (n, mout))
+w1_x = np.random.normal(0, 0.4, (n, mout))
 w1_x = np.clip(w1_x, -lim_arr, lim_arr)
 np.random.seed(101)
-w1_y = np.random.normal(0, 0.5, (n, mout))
+w1_y = np.random.normal(0, 0.4, (n, mout))
 w1_y = np.clip(w1_y, -lim_arr, lim_arr)
 
 np.save('D:/MNIST/data/w1_x_0.npy', w1_x)
@@ -201,19 +206,14 @@ for epoch_num in range(num_epochs):
     all_z1s = np.array(all_z1s).reshape(3 * 240, mout)
     all_theories = np.array(all_theories).reshape(3 * 240, mout)
 
+    all_z1s = ONN.normalise(all_z1s, norm_params)
+
     print(all_z1s.shape)
     print(all_theories.shape)
 
     norm_params = ONN.update_norm_params(all_theories, all_z1s, norm_params)
 
-    ##########################
-
-    ampl_noise = np.random.normal(0, 0.3, (n, m))
-
-    w1_z = dnn.w1_x.copy() + (1j * dnn.w1_y.copy())
-
-    ONN.update_slm(w1_z, lut=True, ref=False, noise_arr_A=None, noise_arr_phi=None)
-    time.sleep(1)
+    # print(norm_params)
 
     ############
     # TRAINING #
