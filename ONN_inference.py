@@ -14,6 +14,7 @@ ref_block_val = ONN.ref_block_val
 batch_size = ONN.batch_size
 num_frames = ONN.num_frames
 is_complex = ONN.is_complex
+label_block_on = ONN.label_block_on
 mout = ONN.mout
 ampl_norm_val = ONN.ampl_norm_val
 scale_guess = ONN.scale_guess
@@ -25,9 +26,9 @@ layers = 1
 ref_on = False
 
 if meas_type == 'reals':
-    w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
+    # w1 = np.load('D:/MNIST/data/best_w1_offline.npy')
 
-    # w1 = np.load('D:/MNIST/data/best_w1.npy')
+    w1 = np.load('D:/MNIST/data/best_w1.npy')
 
     ONN.update_slm(w1, lut=True, ref=ref_on)
     time.sleep(1)
@@ -50,7 +51,7 @@ else:
 
 accs = []
 
-for rep in range(5):
+for rep in range(3):
 
     ###############
     # CALIBRATING #
@@ -250,20 +251,24 @@ for rep in range(5):
 
     if meas_type == 'reals':
 
-        if layers == 1:
+        if label_block_on:
+            pred = test_z1s.argmax(axis=1)
 
-            a1s = softmax(test_z1s*2.)
-            pred = a1s.argmax(axis=1)
+        else:
+            if layers == 1:
 
-        elif layers == 2:
+                a1s = softmax(test_z1s*2.)
+                pred = a1s.argmax(axis=1)
 
-            def relu(x):
-                return np.maximum(0, x)
+            elif layers == 2:
 
-            a1s = relu(test_z1s)
-            z2s = np.dot(a1s, w2)
-            a2s = softmax(z2s)
-            pred = a2s.argmax(axis=1)
+                def relu(x):
+                    return np.maximum(0, x)
+
+                a1s = relu(test_z1s)
+                z2s = np.dot(a1s, w2)
+                a2s = softmax(z2s)
+                pred = a2s.argmax(axis=1)
 
     elif meas_type == 'complex':
         z1_x = np.real(test_z1s.copy())

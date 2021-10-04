@@ -42,6 +42,19 @@ pinned_mempool = cp.get_default_pinned_memory_pool()
 # scale_guess = 0.3
 # meas_type = 'complex_power'
 
+# n = 100
+# m = 40
+# ref_spot = m//2
+# ref_block_val = 0.3
+# batch_size = 240
+# num_frames = 10
+# is_complex = False
+# mout = 10
+# ampl_norm_val = 0.1
+# scale_guess = 1.4
+# ref_guess = 6.7
+# meas_type = 'reals'
+
 n = 100
 m = 40
 ref_spot = m//2
@@ -49,13 +62,14 @@ ref_block_val = 0.3
 batch_size = 240
 num_frames = 10
 is_complex = False
+label_block_on = True
 mout = 10
 ampl_norm_val = 0.1
 scale_guess = 1.4
-ref_guess = 5.6
+ref_guess = 6.7
 meas_type = 'reals'
 
-dmd_block_w = update_params(n, m, ref_spot, ref_block_val, batch_size, num_frames, is_complex)
+dmd_block_w = update_params(n, m, ref_spot, ref_block_val, batch_size, num_frames, is_complex, label_block_on)
 
 ##############
 # LOAD MNIST #
@@ -362,15 +376,16 @@ def init_dmd():
         time.sleep(0.1)
 
 
-def run_batch(vecs_in, ref):
+def run_batch(vecs_in, ref, labels=None):
 
-    global target_frames, ref_block_val, batch_size, num_frames
+    global target_frames, ref_block_val, batch_size, num_frames, label_block_on
     global cp_arr, frame_count, capture, dmd_clock
 
     t0 = time.time()
 
     target_frames[2:-2, :, :, :-1] = make_dmd_batch(vecs_in, ref=ref, ref_block_val=ref_block_val,
-                                                    batch_size=batch_size, num_frames=num_frames)
+                                                    batch_size=batch_size, num_frames=num_frames,
+                                                    label_block_on=label_block_on, labels=labels)
 
     cp_arr = target_frames[0]
     frame_count = 0
@@ -419,6 +434,7 @@ def process_ampls(ampls_in):
     global meas_type
 
     if meas_type == 'reals':
+
         # z1s = ampls_in - Aref
         # z1s = z1s * z0[ref_spot] / z1s[:, ref_spot][:, None]
         # z1s = np.delete(z1s, ref_spot, axis=1)

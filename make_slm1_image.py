@@ -24,6 +24,9 @@ dmd_resY = 1080
 dmd_w = 1920
 dmd_h = 1080
 
+label_block_w = 20
+label_block_w_dmd = int(label_block_w * dmd_w / slm_w)
+
 # create index arrays
 x_SLM = slm_resX_actual//2
 y_SLM = slm_resY_actual//2
@@ -51,7 +54,7 @@ gpu_inv_sinc_LUT = cp.asarray(inv_sinc_LUT, dtype='float32')
 ref_block_norm = np.load('./tools/ref_block_norm.npy')
 
 
-def update_params(_n, _m, ref_spot, ref_block_ampl, batch_size, num_frames, is_complex=False):
+def update_params(_n, _m, ref_spot, ref_block_ampl, batch_size, num_frames, is_complex=False, label_block_on=False):
 
     global n, m
     global slm_w, slm_sig_w, slm_ref_w, slm_h
@@ -157,6 +160,12 @@ def update_params(_n, _m, ref_spot, ref_block_ampl, batch_size, num_frames, is_c
         if ref_block_ampl is not None:
             ref_phase_block = np.zeros((slm_ref_w, slm_h))
             ref_ampl_block = np.ones((slm_ref_w, slm_h)) * ref_block_ampl
+
+        if label_block_on:
+            ref_ampl_block[(slm_ref_w // 2) - label_block_w:
+                           (slm_ref_w // 2) + label_block_w, :] = ref_block_norm.copy()[0, :].copy()
+            ref_phase_block[(slm_ref_w // 2) - label_block_w:
+                            (slm_ref_w // 2) + label_block_w, :] = np.pi
 
     return dmd_block_w
 
@@ -276,7 +285,7 @@ def make_dmd_image(arr, ref=1, ref_block_val=1.):
     return rgb.astype(cp.uint8)
 
 
-def make_dmd_batch(vecs, ref, ref_block_val, batch_size, num_frames):
+def make_dmd_batch(vecs, ref, ref_block_val, batch_size, num_frames, label_block_on=False, labels=None):
 
     def find_1d_pattern(vec):
         target = vec[cp.newaxis, :].astype(cp.uint8).repeat(dmd_block_w + 1, axis=0)
@@ -297,9 +306,25 @@ def make_dmd_batch(vecs, ref, ref_block_val, batch_size, num_frames):
 
     if ref_block_val is not None:
         if ref_block_val > 0:
-            imgs[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w)] = 1
+            imgs[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w), :] = 1
         else:
-            imgs[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w)] = 0
+            imgs[:, insert_indx_dmd:insert_indx_dmd + int(slm_ref_w * dmd_w / slm_w), :] = 0
+
+        if label_block_on:
+
+            if labels is not None:
+                lowers = gpu_dmd_centers_y[labels * 4, 0] - dmd_block_h // 2
+                label_block_h = int(gpu_dmd_centers_y[3, 0] - gpu_dmd_centers_y[0, 0] + dmd_block_h - 1)
+                lowers_rep = (lowers.copy()[None, :]
+                              .repeat(label_block_h, axis=0) + cp.arange(label_block_h)[:, None]).T
+
+                label_block = cp.zeros((240, 1080), dtype='bool')
+                label_block[cp.arange(240)[:, None].repeat(label_block_h, axis=1), lowers_rep] = 1
+                label_block = label_block[:, None, :].repeat(label_block_w_dmd * 2, axis=1)
+                imgs[:, (dmd_w // 2) - label_block_w_dmd:(dmd_w // 2) + label_block_w_dmd, :] = label_block
+
+            else:
+                imgs[:, (dmd_w // 2) - label_block_w_dmd:(dmd_w // 2) + label_block_w_dmd, :] = 0
 
     imgs = imgs.reshape((num_frames, 24, dmd_w, dmd_h)).astype(cp.uint8)[None, ...].repeat(3, axis=0)
     imgs *= bit_values_extended
