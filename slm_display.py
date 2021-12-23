@@ -1,6 +1,5 @@
 import wx
 import threading
-import cupy
 
 EVT_NEW_IMAGE = wx.PyEventBinder(wx.NewEventType(), 0)
 
@@ -20,7 +19,7 @@ class SLMframe(wx.Frame):
     def __init__(self, isImageLock=True):
         self.isImageLock = isImageLock
         # Create the frame
-        self._x0 = -1920
+        self._x0 = -1920-2560
         self._y0 = 0
         self._resX = 1920
         self._resY = 1080
@@ -63,7 +62,7 @@ class SLMdisplay:
         # It needs its thread to continuously refresh the window
         self.vt = videoThread(self)
         self.eventLock = threading.Lock()
-        if (self.isImageLock):
+        if self.isImageLock:
             self.eventLock = threading.Lock()
 
     def getSize(self):
@@ -87,25 +86,20 @@ class SLMdisplay:
         # Wait for the lock to be released (if isImageLock = True)
         # to be sure that the previous image has been displayed
         # before displaying the next one - it avoids skipping images
-        if (self.isImageLock):
+        if self.isImageLock:
             event.eventLock.acquire()
 
         self.vt.frame.AddPendingEvent(event)
-
-    def close(self):
-        raise KeyboardInterrupt
-        # self.vt.frame.Close()
-        # sys.exit()
 
 
 class videoThread(threading.Thread):
     """Run the MainLoop as a thread. Access the frame with self.frame."""
 
     def __init__(self, parent, autoStart=True):
-        threading.Thread.__init__(self)
+        super().__init__()
         self.parent = parent
         # Set as deamon so that it does not prevent the main program from exiting
-        self.setDaemon(1)
+        self.setDaemon(True)
         self.start_orig = self.start
         self.start = self.start_local
         self.frame = None  # to be defined in self.run
@@ -115,13 +109,12 @@ class videoThread(threading.Thread):
             self.start()  # automatically start thread on init
 
     def run(self):
-        app = wx.App()
+        self.app = wx.App()
         frame = SLMframe(isImageLock=self.parent.isImageLock)
         frame.Show(True)
         self.frame = frame
         self.lock.release()
-        # Start GUI main loop
-        app.MainLoop()
+        self.app.MainLoop()
 
     def start_local(self):
         self.start_orig()

@@ -6,24 +6,11 @@ import random
 from termcolor import colored
 from glumpy.app import clock
 import ONN_config as ONN
+from ONN_config import n, m, mout, ref_spot, ref_block_val, batch_size, num_frames
+from ONN_config import is_complex, label_block_on, ampl_norm_val, scale_guess, meas_type
+from ONN_config import layers, ref_on
+from ONN_config import uppers1_nm, uppers1_ann, gpu_actual_uppers_arr, complex_output_ratios
 
-n = ONN.n
-m = ONN.m
-ref_spot = ONN.ref_spot
-ref_block_val = ONN.ref_block_val
-batch_size = ONN.batch_size
-num_frames = ONN.num_frames
-is_complex = ONN.is_complex
-label_block_on = ONN.label_block_on
-mout = ONN.mout
-ampl_norm_val = ONN.ampl_norm_val
-scale_guess = ONN.scale_guess
-meas_type = ONN.meas_type
-
-uppers1_nm, uppers1_ann = ONN.load_lut()
-
-layers = 1
-ref_on = False
 
 ###############
 # CALIBRATING #

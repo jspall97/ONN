@@ -242,7 +242,7 @@ def make_slm_rgb(target, ref_block_ampl):
     return gpu_color_array
 
 
-def make_dmd_image(arr, ref=1, ref_block_val=1.):
+def make_dmd_image(arr, dmd_block_w, ref=1, ref_block_val=1.):
 
     global r
 
