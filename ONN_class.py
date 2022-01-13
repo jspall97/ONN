@@ -29,7 +29,7 @@ class MyONN:
         self.best_w1 = None
         self.best_w2 = None
 
-        self.lim_arr = self.ctrl.uppers1_ann
+        self.lim_arr = self.ctrl.uppers1_nm
 
         self.dnn = None
 
@@ -81,6 +81,9 @@ class MyONN:
         self.testY = np.zeros((num_test, 10))
         for i in range(num_test):
             self.testY[i, testY_raw[0, i]] = 1
+
+        self.trainY = np.random.random((num_train, 1))
+        self.testY = np.random.random((num_test, 1))
 
         trainX_raw = inputs['trainX']
         trainX = np.empty((num_train, 100))
@@ -152,10 +155,10 @@ class MyONN:
         self.axs1.plot([-10, 10], [-10, 10], c='black')
 
         self.eg_line = [self.axs1.plot(np.zeros(self.ctrl.batch_size), np.zeros(self.ctrl.batch_size),
-                                       linestyle='', marker='.', markersize=1)[0] for _ in range(self.ctrl.mout)]
+                                       linestyle='', marker='.', markersize=1)[0] for _ in range(self.ctrl.m)]
 
-        self.th_line = self.axs3.plot(np.zeros(self.ctrl.mout), linestyle='', marker='o', c='b')[0]
-        self.meas_line = self.axs3.plot(np.zeros(self.ctrl.mout), linestyle='', marker='x', c='r')[0]
+        self.th_line = self.axs3.plot(np.zeros(self.ctrl.m), linestyle='', marker='o', c='b')[0]
+        self.meas_line = self.axs3.plot(np.zeros(self.ctrl.m), linestyle='', marker='x', c='r')[0]
 
         self.img = self.axs0.imshow(np.zeros((140, 672)), aspect='auto', vmin=0, vmax=255)
 
@@ -172,10 +175,12 @@ class MyONN:
         while passed < 5:
 
             np.random.seed(passed)
-            slm_arr = np.random.normal(0, 0.4, (self.ctrl.n, self.ctrl.mout))
-            slm_arr = np.clip(slm_arr, -self.ctrl.uppers1_ann, self.ctrl.uppers1_ann)
+            slm1_arr = np.random.normal(0, 0.4, (self.ctrl.n, self.ctrl.m))
+            slm1_arr = np.clip(slm1_arr, -self.lim_arr, self.lim_arr)
 
-            self.ctrl.update_slm(slm_arr, lut=True)
+            slm2_arr = np.random.normal(0, 0.4, (self.ctrl.m, 1))
+
+            self.ctrl.update_slms(slm1_arr, slm2_arr, slm1_lut=True, slm2_lut=True)
             time.sleep(1)
 
             batch_indxs = np.random.randint(0, 60000, self.ctrl.batch_size)
@@ -187,8 +192,7 @@ class MyONN:
 
             if success:
                 _measured = self.ctrl.z1s.copy()
-                _theory = np.dot(xs, slm_arr.copy())
-                # _theory = np.delete(_theory, ref_spot, axis=1)
+                _theory = np.dot(xs, slm1_arr.copy())
                 measured.append(_measured)
                 theory.append(_theory)
                 passed += 1
@@ -198,8 +202,8 @@ class MyONN:
             if failed > 3:
                 raise TimeoutError
 
-        measured = np.array(measured).reshape(5 * self.ctrl.batch_size, self.ctrl.mout)
-        theory = np.array(theory).reshape(5 * self.ctrl.batch_size, self.ctrl.mout)
+        measured = np.array(measured).reshape(5 * self.ctrl.batch_size, self.ctrl.m)
+        theory = np.array(theory).reshape(5 * self.ctrl.batch_size, self.ctrl.m)
 
         np.save('./tools/temp_z1s.npy', measured)
         np.save('./tools/temp_theories.npy', theory)
@@ -213,29 +217,20 @@ class MyONN:
 
     def init_onn(self):
 
-        m_dw1 = np.zeros((self.ctrl.n, self.ctrl.mout))
-        v_dw1 = np.zeros((self.ctrl.n, self.ctrl.mout))
+        m_dw1 = np.zeros((self.ctrl.n, self.ctrl.m))
+        v_dw1 = np.zeros((self.ctrl.n, self.ctrl.m))
 
         beta1 = 0.9
         beta2 = 0.999
 
-        if self.ctrl.layers == 1:
+        m_dw2 = np.zeros((self.ctrl.m, 1))
+        v_dw2 = np.zeros((self.ctrl.m, 1))
 
-            adam_params = (m_dw1, v_dw1, beta1, beta2)
+        adam_params = (m_dw1, v_dw1, m_dw2, v_dw2, beta1, beta2)
 
-            self.dnn = DNN_1d(*adam_params, x=self.trainX, y=self.trainY, w1_0=self.w1,
-                              batch_size=self.ctrl.batch_size, num_batches=self.num_batches, lr=self.lr)
-
-        elif self.ctrl.layers == 2:
-
-            m_dw2 = np.zeros((self.ctrl.mout, 10))
-            v_dw2 = np.zeros((self.ctrl.mout, 10))
-
-            adam_params = (m_dw1, v_dw1, m_dw2, v_dw2, beta1, beta2)
-
-            self.dnn = DNN(*adam_params, x=self.trainX, y=self.trainY, w1_0=self.w1, w2_0=self.w2,
-                           batch_size=self.ctrl.batch_size, num_batches=self.num_batches, lr=self.lr,
-                           nonlinear=True)
+        self.dnn = DNN(*adam_params, x=self.trainX, y=self.trainY, w1_0=self.w1, w2_0=self.w2,
+                       batch_size=self.ctrl.batch_size, num_batches=self.num_batches, lr=self.lr,
+                       nonlinear=True)
 
         loss = [5]
         errors = []
@@ -249,7 +244,7 @@ class MyONN:
 
     def init_epoch(self, epoch_num):
 
-        self.ctrl.update_slm(self.w1.copy(), lut=True)
+        self.ctrl.update_slms(self.w1.copy(), self.w2.copy(), slm1_lut=True, slm2_lut=True)
         time.sleep(1)
 
         epoch_rand_indxs = np.arange(60000)
@@ -284,13 +279,13 @@ class MyONN:
             if failed > 3:
                 raise TimeoutError
 
-        all_z1s = np.array(all_z1s).reshape(3 * self.ctrl.batch_size, self.ctrl.mout)
-        all_theories = np.array(all_theories).reshape(3 * self.ctrl.batch_size, self.ctrl.mout)
+        all_z1s = np.array(all_z1s).reshape(3 * self.ctrl.batch_size, self.ctrl.m)
+        all_theories = np.array(all_theories).reshape(3 * self.ctrl.batch_size, self.ctrl.m)
 
         self.ctrl.update_norm_params(all_theories, all_z1s)
 
-        self.ctrl.update_slm(self.dnn.w1.copy(), lut=True,
-                             noise_arr_A=self.noise_arr(), noise_arr_phi=None)
+        self.ctrl.update_slms(self.dnn.w1.copy(), self.dnn.w2.copy(),
+                              slm1_lut=True, slm2_lut=True)
         time.sleep(1)
 
     def run_batch(self, batch_num):
@@ -319,19 +314,20 @@ class MyONN:
 
             self.dnn.w1 = np.clip(self.dnn.w1.copy(), -self.lim_arr, self.lim_arr)
 
-            self.ctrl.update_slm(self.dnn.w1.copy(), lut=True, noise_arr_A=self.noise_arr(), noise_arr_phi=None)
+            self.ctrl.update_slms(self.dnn.w1.copy(), self.dnn.w2.copy(),
+                                  slm1_lut=True, slm2_lut=True)
+            # noise_arr_A=self.noise_arr(), noise_arr_phi=None)
 
             if self.dnn.loss < self.loss[-1]:
                 self.best_w1 = self.dnn.w1.copy()
-                if self.ctrl.layers == 2:
-                    self.best_w2 = self.dnn.w2.copy()
+                self.best_w2 = self.dnn.w2.copy()
 
             self.loss.append(self.dnn.loss)
             print(colored('loss : {:.2f}'.format(self.dnn.loss), 'green'))
 
         else:
-            measured = np.full((self.ctrl.batch_size, self.ctrl.mout), np.nan)
-            theory = np.full((self.ctrl.batch_size, self.ctrl.mout), np.nan)
+            measured = np.full((self.ctrl.batch_size, self.ctrl.m), np.nan)
+            theory = np.full((self.ctrl.batch_size, self.ctrl.m), np.nan)
 
         self.measured = measured
         self.theory = theory
@@ -346,10 +342,11 @@ class MyONN:
     def run_validation(self, epoch_num):
 
         self.dnn.w1 = self.best_w1.copy()
-        if self.ctrl.layers == 2:
-            self.dnn.w2 = self.best_w2.copy()
+        self.dnn.w2 = self.best_w2.copy()
 
-        self.ctrl.update_slm(self.dnn.w1.copy(), lut=True, noise_arr_A=self.noise_arr(), noise_arr_phi=None)
+        self.ctrl.update_slms(self.dnn.w1.copy(), self.dnn.w2.copy(),
+                              slm1_lut=True, slm2_lut=True)
+        # noise_arr_A=self.noise_arr(), noise_arr_phi=None)
         time.sleep(1)
 
         measured = []
@@ -372,8 +369,8 @@ class MyONN:
                 next_batch = True
             else:
                 if failed > 3:
-                    _measured = np.full((self.ctrl.batch_size, self.ctrl.mout), np.nan)
-                    _theory = np.full((self.ctrl.batch_size, self.ctrl.mout), np.nan)
+                    _measured = np.full((self.ctrl.batch_size, self.ctrl.m), np.nan)
+                    _theory = np.full((self.ctrl.batch_size, self.ctrl.m), np.nan)
                     next_batch = True
                     failed = 0
                 else:
@@ -397,19 +394,15 @@ class MyONN:
 
                 val_batch_num += 1
 
-        measured = np.array(measured).reshape((4800, self.ctrl.mout))
+        measured = np.array(measured).reshape((4800, self.ctrl.m))
         mask = ~np.isnan(measured[:, 0])
         measured = measured[mask]
         ys = self.valY[:4800].copy()[mask]
 
         self.dnn.feedforward(measured)
 
-        if self.ctrl.layers == 1:
-            pred = self.dnn.a1.argmax(axis=1)
-        elif self.ctrl.layers == 2:
-            pred = self.dnn.a2.argmax(axis=1)
-
-        label = ys.argmax(axis=1)
+        pred = self.dnn.z2[:, 0]
+        label = ys[:, 0]
 
         acc = accuracy(pred, label)
         self.accs.append(acc)
@@ -429,26 +422,25 @@ class MyONN:
                 .format(epoch_num, batch_num), self.theory)
 
         np.save('D:/MNIST/data/w1/w1_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(self.dnn.w1))
-        if self.ctrl.layers == 2:
-            np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(self.dnn.w2))
+        np.save('D:/MNIST/data/w2/w2_epoch_{}_batch_{}.npy'.format(epoch_num, batch_num), np.array(self.dnn.w2))
 
     def save_data_epoch(self):
 
         np.save('D:/MNIST/data/accuracy.npy', np.array(self.accs))
         np.save('D:/MNIST/data/best_w1.npy', self.best_w1)
-        if self.ctrl.layers == 2:
-            np.save('D:/MNIST/data/best_w2.npy', self.best_w2)
+        np.save('D:/MNIST/data/best_w2.npy', self.best_w2)
 
     def update_plots_batch(self):
 
-        for j in range(self.ctrl.mout):
+        for j in range(self.ctrl.m):
             self.eg_line[j].set_xdata(np.real(self.theory[:, j]))
             self.eg_line[j].set_ydata(np.real(self.measured[:, j]))
 
         self.th_line.set_ydata(np.real(self.theory[0, :]))
         self.meas_line.set_ydata(np.real(self.measured[0, :]))
 
-        self.img.set_array(self.ctrl.frames[0])
+        if len(self.ctrl.frames) > 0:
+            self.img.set_array(self.ctrl.frames[0])
 
         plt.draw()
         plt.gcf().canvas.draw_idle()

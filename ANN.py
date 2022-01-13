@@ -25,8 +25,9 @@ def cross_entropy(pred, real):
 
 def error(pred, real):
     n_samples = real.shape[0]
-    log_p = - np.log(pred[np.arange(n_samples), real.argmax(axis=1)]+1e-18)
-    loss = np.sum(log_p) / n_samples
+    # log_p = - np.log(pred[np.arange(n_samples), real.argmax(axis=1)]+1e-18)
+    # loss = np.sum(log_p) / n_samples
+    loss = 0.5 * ((pred-real)**2).sum() / n_samples
 
     return loss
 
@@ -45,9 +46,10 @@ class DNN:
         self.batch_size = batch_size
         self.lr = lr
         self.loss = []
-        ip_dim = self.x.shape[1]
-        op_dim = self.y.shape[1]
-        hl_dim = 25
+        ip_dim = w1_0.shape[0]
+        hl_dim = w1_0.shape[1]
+        op_dim = w2_0.shape[1]
+        assert w1_0.shape[1] == w2_0.shape[0]
 
         self.nonlinear = nonlinear
 
@@ -71,7 +73,7 @@ class DNN:
 
         # self.z2 /= 10000
 
-        self.a2 = softmax(self.z2)
+        # self.a2 = softmax(self.z2)
 
         # print(self.z2.min(), self.z2.max())
         # print(self.a2.min(), self.a2.max())
@@ -92,16 +94,23 @@ class DNN:
 
     def backprop(self, xs, ys):
 
-        self.loss = error(self.a2, ys)
+        # self.loss = error(self.a2, ys)
+        #
+        # a2_delta = (self.a2 - ys) / self.batch_size  # for w2
+        # z1_delta = np.dot(a2_delta, self.w2.T)
+        # if self.nonlinear:
+        #     a1_delta = z1_delta * relu_d(self.a1)  # w1
+        # else:
+        #     a1_delta = z1_delta
 
-        a2_delta = (self.a2 - ys) / self.batch_size  # for w2
-        z1_delta = np.dot(a2_delta, self.w2.T)
-        if self.nonlinear:
-            a1_delta = z1_delta * relu_d(self.a1)  # w1
-        else:
-            a1_delta = z1_delta
+        self.loss = error(self.z2, ys)
 
+        a2_delta = (self.z2 - ys)/self.batch_size
         dw2 = np.dot(self.a1.T, a2_delta)
+
+        a1_delta = np.dot(a2_delta, self.w2.T)
+        if self.nonlinear == 'relu':
+            a1_delta *= relu_d(self.a1)  # w1
         dw1 = np.dot(xs.T, a1_delta)
 
         adam_dw2, self.m_dw2, self.v_dw2 = self.adam_update(dw2, self.m_dw2, self.v_dw2)

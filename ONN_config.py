@@ -9,7 +9,8 @@ from glumpy import app
 from glumpy.app import clock
 from glumpy_display import setup, window_on_draw
 from slm_display import SLMdisplay
-from make_slm1_image import make_slm_rgb, make_dmd_image, make_dmd_batch, update_params
+from make_slm_image_2d import make_slm1_rgb, make_slm2_rgb,\
+                              make_dmd_image, make_dmd_batch, update_params
 
 mempool = cp.get_default_memory_pool()
 pinned_mempool = cp.get_default_pinned_memory_pool()
@@ -27,7 +28,7 @@ class CaptureProcess(pylon.ImageEventHandler):
 
             image = grab_result.GetArray()
 
-            if image.max() > 8:
+            if image.max() > 0:  # 8
                 self.frames.append(image)
 
             self.frames = self.frames[-1001:]
@@ -35,58 +36,42 @@ class CaptureProcess(pylon.ImageEventHandler):
 
 class Controller:
 
-    def __init__(self,  n, m, ref_spot, ref_block_val, batch_size, num_frames, is_complex, mout,
-                 ampl_norm_val, scale_guess, ref_guess, meas_type, layers, ref_on, label_block_on):
+    def __init__(self,  n, m, batch_size, num_frames, scale_guess, ref_guess,
+                 R1_ampl, R2_ampl, label_ampl):
 
         self.n = n
         self.m = m
-        self.ref_spot = ref_spot
-        self.ref_block_val = ref_block_val
+
         self.batch_size = batch_size
         self.num_frames = num_frames
-        self.is_complex = is_complex
-        self.mout = mout
-        self.ampl_norm_val = ampl_norm_val
+
         self.scale_guess = scale_guess
         self.ref_guess = ref_guess
-        self.meas_type = meas_type
-        self.layers = layers
-        self.ref_on = ref_on
-        self.label_block_on = label_block_on
+
+        self.R1_ampl = R1_ampl
+        self.R2_ampl = R2_ampl
+        self.label_ampl = label_ampl
 
         self.y_centers = np.load('./tools/y_centers_list.npy')
         self.x_edge_indxs = np.load('./tools/x_edge_indxs.npy')
         self.complex_output_ratios = np.load('./tools/complex_output_ratios.npy')
 
-        self.dmd_block_w = update_params(self.n, self.m, self.ref_spot, self.ref_block_val, self.batch_size,
-                                         self.num_frames, self.is_complex, self.label_block_on)
+        self.dmd_block_w = update_params(self.n, self.m, self.batch_size, self.num_frames)
 
-        if self.meas_type == 'reals':
+        actual_uppers_arr_256 = np.load("C:/Users/spall/OneDrive - Nexus365/Code/JS/PycharmProjects/"
+                                        "ONN/tools/actual_uppers_arr_256.npy")
+        self.uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
+        self.gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_256)
 
-            actual_uppers_arr_256 = np.load("C:/Users/spall/OneDrive - Nexus365/Code/JS/PycharmProjects/"
-                                            "ONN/tools/actual_uppers_arr_256.npy")
-            # actual_uppers_arr_256[:, :, ref_spot] = actual_uppers_arr_256[:, :, ref_spot+1]
-            self.uppers1_nm = actual_uppers_arr_256[-1, ...].copy()
-            # uppers1_ann = np.delete(uppers1_nm, ref_spot, 1)
-            self.gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_256)
-
-        else:
-
-            actual_uppers_arr_128_flat = np.load("C:/Users/spall/OneDrive - Nexus365/Code/JS/PycharmProjects"
-                                                 "/ONN/tools/actual_uppers_arr_128_flat.npy")
-            actual_uppers_arr_128_flat /= np.max(actual_uppers_arr_128_flat)
-            self.uppers1_nm = actual_uppers_arr_128_flat[-1, ...].copy()
-            self.gpu_actual_uppers_arr = cp.asarray(actual_uppers_arr_128_flat)
-
-        if m != mout:
-            self.uppers1_ann = self.uppers1_nm.reshape(n, mout, m//mout).mean(axis=-1)
-
-        self.slm = SLMdisplay()
+        # self.slm = SLMdisplay(-1920-2560, 0, 1920/2, 1080/2, 'SLM 1', True)
+        self.slm = SLMdisplay(-1920, 1920/2, 1080, 'SLM 1',
+                              -1920/2, 1920/2, 1080, 'SLM 2',
+                              True)
 
         self.backend = app.use('glfw')
-
         self.window = app.Window(1920, 1080, fullscreen=0, decoration=0)
         self.window.set_position(-1920-1920-2560, 0)
+        # self.window.set_position(0, 0)
         self.window.activate()
         self.window.show()
 
@@ -100,7 +85,7 @@ class Controller:
 
         self.screen, self.cuda_buffer, self.context = setup(1920, 1080)
 
-        self.null_frame = self.dmd_one_frame(np.zeros((self.n, self.m)), ref=0)[0]
+        self.null_frame = make_dmd_image(np.zeros((self.n, self.m)), 0., 0., 0.)
         self.null_frames = [self.null_frame for _ in range(10)]
 
         self.camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
@@ -108,10 +93,19 @@ class Controller:
 
         print("Using device ", self.camera.GetDeviceInfo().GetModelName())
 
-        pylon.FeaturePersistence.Load("./tools/pylon_settings.pfs", self.camera.GetNodeMap())
+        pylon.FeaturePersistence.Load("./tools/pylon_settings_burst.pfs", self.camera.GetNodeMap())
         # register the background handler and start grabbing using background pylon thread
         self.capture = CaptureProcess()
         self.camera.RegisterImageEventHandler(self.capture, pylon.RegistrationMode_ReplaceAll, pylon.Cleanup_None)
+        self.camera.AcquisitionMode.SetValue("Continuous")
+        self.camera.TriggerSelector.SetValue("FrameBurstStart")
+        self.camera.TriggerMode.SetValue("On")
+        self.camera.TriggerSource.SetValue("Line1")
+        self.camera.TriggerActivation.SetValue("RisingEdge")
+        self.camera.AcquisitionFrameRate.SetValue(1440)
+        self.camera.AcquisitionBurstFrameCount.SetValue(24)
+
+        self.capture.frames = []
         self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne, pylon.GrabLoop_ProvidedByInstantCamera)
         time.sleep(1)
 
@@ -126,9 +120,7 @@ class Controller:
 
         self.init_dmd()
 
-    def dmd_one_frame(self, arr, ref):
-        img = make_dmd_image(arr, ref=ref, ref_block_val=self.ref_block_val, dmd_block_w=self.dmd_block_w)
-        return [img]
+        print('setup complete')
 
     def init_dmd(self):
 
@@ -143,13 +135,12 @@ class Controller:
             app.run(clock=self.dmd_clock, framerate=0, framecount=self.fc)
             time.sleep(0.1)
 
-    def run_batch(self, vecs_in, labels=None, normalise=False):
+    def run_batch(self, vecs_in, normalise=False):
 
         t0 = time.perf_counter()
 
-        self.target_frames[2:-2, :, :, :-1] = make_dmd_batch(vecs_in, ref=self.ref_on, ref_block_val=self.ref_block_val,
-                                                             batch_size=self.batch_size, num_frames=self.num_frames,
-                                                             label_block_on=self.label_block_on, labels=labels)
+        self.target_frames[2:-2, :, :, :-1] = make_dmd_batch(vecs_in, self.R1_ampl, self.R2_ampl, self.label_ampl,
+                                                             self.batch_size, self.num_frames)
 
         self.cp_arr = self.target_frames[0]
         self.frame_count = 0
@@ -162,14 +153,13 @@ class Controller:
         self.ampls = self.find_spot_ampls(self.frames.copy())
 
         print('num frames = ', self.frames.shape)
-
         np.save('./tools/frames_temp.npy', self.frames)
 
-        success = self.check_num_frames(self.batch_size)
+        success = self.check_num_frames(true_size=self.batch_size)
         if success:
-            self.process_ampls(normalise)
+            self.process_ampls(normalise=normalise)
         else:
-            self.z1s = np.full((self.batch_size, self.mout), np.nan)
+            self.z1s = np.full((self.batch_size, self.m), np.nan)
 
         t1 = time.perf_counter()
 
@@ -185,66 +175,41 @@ class Controller:
             return np.s_[:, self.y_centers[i] - 2:self.y_centers[i] + 3,
                          self.x_edge_indxs[2 * i]:self.x_edge_indxs[2 * i + 1]]
 
-        spot_powers = cp.array([arrs[spot_s(i)].mean(axis=(1, 2)) for i in range(self.m + 1)])
-        # spot_powers = cp.random.randint(0, 256, (240, self.m+1)).T
+        # spot_powers = cp.array([arrs[spot_s(i)].mean(axis=(1, 2)) for i in range(self.m + 1)])
+        spot_powers = cp.random.randint(0, 256, (240, self.m)).T
 
         spot_ampls = cp.sqrt(spot_powers)
+        spot_ampls = cp.flip(spot_ampls, axis=0).T
 
-        spot_ampls = cp.flip(spot_ampls, axis=0)
+        return spot_ampls.get()
 
-        ratio = spot_ampls[self.ref_spot, :] / spot_ampls[self.ref_spot + 1, :]
+    def create_slm1(self, arr, lut):
 
-        spot_ampls[self.ref_spot + 1:, :] *= ratio[None, :]
-
-        spot_ampls = np.delete(spot_ampls.get(), self.ref_spot + 1, 0)
-
-        return spot_ampls.T
-
-    def update_slm(self, arr, lut=False, noise_arr_A=None, noise_arr_phi=None):
-
-        if arr.shape[1] == self.m - 1:
-            arr = np.insert(arr, self.ref_spot, np.zeros(self.n), 1)
-
-        if self.is_complex:
-            arr = np.repeat(arr.copy(), 4, axis=1) * self.complex_output_ratios.copy()[None, :]
-
-            if lut:
-                gpu_arr = cp.abs(cp.asarray(arr.copy()))
-                map_indx = cp.argmin(cp.abs(self.gpu_actual_uppers_arr - gpu_arr), axis=0)
-                arr_A = cp.linspace(0., 1., 128)[map_indx]
-            else:
-                arr_A = cp.abs(cp.asarray(arr.copy()))
-
-            arr_phi = cp.angle(cp.array(arr.copy()))
-
-            if noise_arr_A is not None:
-                arr_A += cp.array(noise_arr_A)
-
-            if noise_arr_phi is not None:
-                arr_phi += cp.array(noise_arr_phi)
-
-            arr_out = arr_A * cp.exp(1j * arr_phi)
-
+        if lut:
+            gpu_arr = cp.asarray(arr.copy())
+            map_indx = cp.argmin(cp.abs(self.gpu_actual_uppers_arr - gpu_arr), axis=0)
+            arr_out = cp.linspace(-1., 1., 256)[map_indx]
         else:
-
-            arr = np.repeat(arr.copy(), 4, axis=1) * self.complex_output_ratios.copy()[None, :]
-
-            if noise_arr_A is not None:
-                arr += noise_arr_A.copy()
-
-            if lut:
-                gpu_arr = cp.asarray(arr.copy())
-                map_indx = cp.argmin(cp.abs(self.gpu_actual_uppers_arr - gpu_arr), axis=0)
-                arr_out = cp.linspace(-1., 1., 256)[map_indx]
-            else:
-                arr_out = cp.asarray(arr.copy())
-
-            if self.ref_on:
-                arr_out[:, self.ref_spot] = self.ampl_norm_val
+            arr_out = cp.asarray(arr.copy())
 
         arr_out = np.flip(arr_out.get(), axis=1)
-        img = make_slm_rgb(arr_out, self.ref_block_val)
-        self.slm.updateArray(img)
+
+        img = make_slm1_rgb(arr_out, R1_ampl=self.R1_ampl, R1_phase=0, R2_ampl=1., R2_phase=0.,
+                            label_ampl=1., label_phase=0.)
+
+        return img
+
+    def create_slm2(self, arr, lut):
+        img = make_slm2_rgb(arr, R2_ampl=self.R2_ampl, R2_phase=0,
+                            label_ampl=self.label_ampl, label_phase=cp.pi)
+
+        return img
+
+    def update_slms(self, slm1_arr, slm2_arr, slm1_lut=False, slm2_lut=False):
+
+        img1 = self.create_slm1(slm1_arr, slm1_lut)
+        img2 = self.create_slm2(slm2_arr, slm2_lut)
+        self.slm.updateArray(img1, img2)
 
     def check_num_frames(self, true_size):
 
@@ -269,33 +234,9 @@ class Controller:
 
     def process_ampls(self, normalise=False):
 
-        if self.meas_type == 'reals':
+        ampls = self.ampls.copy()
 
-            ampls = self.ampls.copy()
-            if self.m != self.mout:
-                ampls = ampls.reshape((self.ampls.shape[0], self.mout, self.m // self.mout)).mean(axis=-1)
-
-            z1s = (ampls - self.ref_guess) * self.scale_guess
-
-        elif self.meas_type == 'complex':
-
-            Iall = self.ampls.copy() ** 2
-            I0 = Iall[:, 0::4].copy()
-            I1 = Iall[:, 1::4].copy()
-            I2 = Iall[:, 2::4].copy()
-            I3 = Iall[:, 3::4].copy()
-            Xmeas = (I0 - I2) / self.scale_guess
-            Ymeas = (I1 - I3) / self.scale_guess
-            z1s = Xmeas + (1j * Ymeas)
-
-        elif self.meas_type == 'complex_power':
-            Imeas = self.ampls.copy() ** 2
-            Imeas = Imeas.reshape(Imeas.shape[0], 10, 4).mean(axis=-1)
-            Imeas *= self.scale_guess
-            z1s = Imeas.copy()
-
-        else:
-            raise ValueError
+        z1s = (ampls - self.ref_guess) * self.scale_guess
 
         if normalise:
             z1s_norm = self.normalise(z1s)
@@ -310,17 +251,7 @@ class Controller:
 
         assert theory.shape[1] == measured.shape[1]
 
-        if self.meas_type == 'complex':
-
-            real_norm_params = np.array([curve_fit(line, np.real(theory[:, j]), np.real(measured[:, j]))[0]
-                                         for j in range(theory.shape[1])])
-            imag_norm_params = np.array([curve_fit(line, np.imag(theory[:, j]), np.imag(measured[:, j]))[0]
-                                         for j in range(theory.shape[1])])
-
-            self.norm_params = real_norm_params + (1j * imag_norm_params)
-
-        else:
-            self.norm_params = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
+        self.norm_params = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
                                     for j in range(theory.shape[1])])
 
     def update_norm_params(self, theory, measured):
@@ -330,43 +261,13 @@ class Controller:
 
         assert theory.shape[1] == measured.shape[1]
 
-        if self.meas_type == 'complex':
-
-            real_norm_params_adjust = np.array([curve_fit(line, np.real(theory[:, j]), np.real(measured[:, j]))[0]
-                                                for j in range(self.mout)])
-            real_norm_params = np.real(self.norm_params.copy())
-            real_norm_params[:, 1] += real_norm_params[:, 0].copy() * real_norm_params_adjust[:, 1].copy()
-            real_norm_params[:, 0] *= real_norm_params_adjust[:, 0].copy()
-
-            imag_norm_params_adjust = np.array([curve_fit(line, np.imag(theory[:, j]), np.imag(measured[:, j]))[0]
-                                                for j in range(self.mout)])
-            imag_norm_params = np.imag(self.norm_params.copy())
-            imag_norm_params[:, 1] += imag_norm_params[:, 0].copy() * imag_norm_params_adjust[:, 1].copy()
-            imag_norm_params[:, 0] *= imag_norm_params_adjust[:, 0].copy()
-
-            self.norm_params = real_norm_params + (1j * imag_norm_params)
-
-        else:
-
-            norm_params_adjust = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
-                                           for j in range(self.mout)])
-            self.norm_params[:, 1] += self.norm_params[:, 0].copy() * norm_params_adjust[:, 1].copy()
-            self.norm_params[:, 0] *= norm_params_adjust[:, 0].copy()
+        norm_params_adjust = np.array([curve_fit(line, theory[:, j], measured[:, j])[0]
+                                       for j in range(self.m)])
+        self.norm_params[:, 1] += self.norm_params[:, 0].copy() * norm_params_adjust[:, 1].copy()
+        self.norm_params[:, 0] *= norm_params_adjust[:, 0].copy()
 
     def normalise(self, z1s_in):
-
-        if self.meas_type == 'complex':
-
-            Zreals = (np.real(z1s_in).copy() - np.real(self.norm_params.copy())[:, 1]) \
-                     / np.real(self.norm_params.copy())[:, 0]
-            Zimags = (np.imag(z1s_in).copy() - np.imag(self.norm_params.copy())[:, 1]) \
-                     / np.imag(self.norm_params.copy())[:, 0]
-            z1s = Zreals + (1j * Zimags)
-
-        else:
-            z1s = (z1s_in - self.norm_params[:, 1].copy()) / self.norm_params[:, 0].copy()
-
-        return z1s
+        return (z1s_in - self.norm_params[:, 1].copy()) / self.norm_params[:, 0].copy()
 
     def close(self):
         self.camera.Close()
