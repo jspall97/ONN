@@ -25,9 +25,6 @@ class SLMframe(wx.Frame):
         self.img = wx.Image(2, 2)
         self.bmp = self.img.ConvertToBitmap()
         self.clientSize = self.GetClientSize()
-        self.img1 = wx.Image(2, 2)
-        self.bmp1 = self.img1.ConvertToBitmap()
-        self.clientSize1 = self.GetClientSize()
         # Update the image upon receiving an event EVT_NEW_IMAGE
         self.Bind(EVT_NEW_IMAGE, self.UpdateImage)
         # Set full screen
@@ -71,7 +68,7 @@ class SLMdisplay:
         if self.isImageLock:
             self.eventLock = threading.Lock()
 
-    def updateArray(self, array, array1):
+    def create_update_event(self, array):
         """
         Update the SLM monitor with the supplied array.
         Note that the array is not the same size as the SLM resolution,
@@ -81,10 +78,6 @@ class SLMdisplay:
         h, w = array.shape[0], array.shape[1]
         data = array.tobytes()
         img = wx.ImageFromBuffer(width=w, height=h, dataBuffer=data)
-
-        h1, w1 = array1.shape[0], array1.shape[1]
-        data1 = array1.tobytes()
-        img1 = wx.ImageFromBuffer(width=w1, height=h1, dataBuffer=data1)
 
         # Create the event
         event = ImageEvent()
@@ -98,21 +91,19 @@ class SLMdisplay:
             event.eventLock.acquire()
 
         # time.sleep(0.1)
+        return event
 
-        self.vt.frame.AddPendingEvent(event)
-
-        # Create the event
-        event = ImageEvent()
-        event.img = img1
-        event.eventLock = self.eventLock
-
-        # Wait for the lock to be released (if isImageLock = True)
-        # to be sure that the previous image has been displayed
-        # before displaying the next one - it avoids skipping images
-        if self.isImageLock:
-            event.eventLock.acquire()
-
+    def updateArray_slm1(self, array):
+        event = self.create_update_event(array)
         self.vt.frame1.AddPendingEvent(event)
+
+    def updateArray_slm2(self, array):
+        event = self.create_update_event(array)
+        self.vt.frame2.AddPendingEvent(event)
+
+    def updateArray_both(self, array1, array2):
+        self.updateArray_slm1(array1)
+        self.updateArray_slm2(array2)
 
 
 class videoThread(threading.Thread):
@@ -125,8 +116,8 @@ class videoThread(threading.Thread):
         self.setDaemon(True)
         self.start_orig = self.start
         self.start = self.start_local
-        self.frame = None  # to be defined in self.run
-        self.frame1 = None
+        self.frame1 = None  # to be defined in self.run
+        self.frame2 = None
         self.lock = threading.Lock()
         self.lock.acquire()  # lock until variables are set
         if autoStart:
@@ -134,14 +125,14 @@ class videoThread(threading.Thread):
 
     def run(self):
         self.app = wx.App()
-        frame = SLMframe(self.parent._x0, self.parent._resX, self.parent._resY,
+        frame1 = SLMframe(self.parent._x0, self.parent._resX, self.parent._resY,
                          self.parent._name)
-        frame.Show(True)
-        frame1 = SLMframe(self.parent._x0_1, self.parent._resX1, self.parent._resY1,
-                         self.parent._name1)
         frame1.Show(True)
-        self.frame = frame
+        frame2 = SLMframe(self.parent._x0_1, self.parent._resX1, self.parent._resY1,
+                         self.parent._name1)
+        frame2.Show(True)
         self.frame1 = frame1
+        self.frame2 = frame2
         self.lock.release()
         self.app.MainLoop()
 

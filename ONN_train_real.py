@@ -24,28 +24,30 @@ label_ampl = 0.
 scale_guess = 1.4
 ref_guess = 6.7
 
-onn_vars = n, m, batch_size, num_frames, scale_guess, ref_guess, R1_ampl, R2_ampl, label_ampl
+onn_vars = n, m, batch_size, num_frames, scale_guess, ref_guess, \
+           R1_ampl, R2_ampl, label_ampl
 
-controller = Controller(*onn_vars)
+ONN = MyONN(lr, num_batches, num_epochs, onn_vars)
 
-lim_arr = controller.uppers1_nm.copy()
+####################################################
 
 np.random.seed(100)
 w1 = np.random.normal(0, 0.5, (n, m))
-w1 = np.clip(w1, -lim_arr, lim_arr)
+w1 = np.clip(w1, -ONN.lim_arr, ONN.lim_arr)
 np.save('D:/MNIST/data/w1_0.npy', w1)
+ONN.w1 = w1
 
 np.random.seed(200)
 w2 = np.random.normal(0, 0.5, (m, 1))
 np.save('D:/MNIST/data/w2_0.npy', w2)
+ONN.w2 = w2
 
-####################################################
-
-ONN = MyONN(controller, w1, w2, lr, num_batches, num_epochs, noise_mean=0., noise_std=0.1, noise_type=None)
-
+ONN.load_dataset()
 ONN.graphs()
 ONN.run_calibration()
 ONN.init_onn()
+
+####################################################
 
 for epoch_num in range(num_epochs):
 
